@@ -1,2 +1,20 @@
-# Stockprizepredictor
-A machine learning-based stock price prediction system that combines financial news sentiment analysis (FinBERT) with historical market data using a Temporal Fusion Transformer (TFT) to forecast stock price movements. The project integrates NLP and time-series forecasting to improve prediction accuracy and support data-driven investment decisions.
+# 📈 Stock Price Predictor
+
+A machine learning project that predicts stock price movements by combining financial news sentiment analysis with historical market data.
+
+## Features
+- 📊 Historical stock price analysis
+- 📰 Financial news sentiment analysis using FinBERT
+- 🤖 Temporal Fusion Transformer (TFT) for time-series forecasting
+- 📈 Trend prediction and visualization
+- 📉 Performance evaluation using regression metrics
+
+## Tech Stack
+- Python
+- PyTorch
+- FinBERT
+- Temporal Fusion Transformer (TFT)
+- Pandas
+- NumPy
+- Scikit-learn
+- Matplotlib
