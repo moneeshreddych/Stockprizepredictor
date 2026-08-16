@@ -1,103 +1,200 @@
 import os
 import time
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
-import pandas as pd
 from dotenv import load_dotenv
-
-from stock_config import NASDAQ_STOCKS
-
-
-# ============================================================
-# LOAD ENVIRONMENT VARIABLES
-# ============================================================
-
-load_dotenv()
+from supabase import create_client
 
 
 # ============================================================
-# API KEYS
+# PROJECT ROOT / .ENV
 # ============================================================
 
-ALPHA_VANTAGE_API_KEY = os.getenv(
-    "ALPHA_VANTAGE_API_KEY"
-)
+# File:
+# C:\stockpricepredictor\news\news_collector.py
+#
+# Project root:
+# C:\stockpricepredictor
 
-FINNHUB_API_KEY = os.getenv(
-    "FINNHUB_API_KEY"
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-MARKETAUX_API_KEY = os.getenv(
-    "MARKETAUX_API_KEY"
-)
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(ENV_FILE)
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-DAYS_BACK = 7
-
-LIMIT = 100
+LOOKBACK_HOURS = 2
 
 REQUEST_TIMEOUT = 30
 
 MAX_RETRIES = 3
 
-RETRY_DELAY = 3
-
-STOCK_DELAY = 2
+BATCH_SIZE = 100
 
 
 # ============================================================
-# DIRECTORIES
+# SUPABASE CONFIGURATION
 # ============================================================
 
-BASE_DIR = Path(
-    "data/raw/news"
+SUPABASE_URL = os.getenv(
+    "SUPABASE_URL"
 )
 
-NASDAQ_DIR = (
-    BASE_DIR / "nasdaq"
-)
-
-NASDAQ_DIR.mkdir(
-    parents=True,
-    exist_ok=True
+SUPABASE_SECRET_KEY = os.getenv(
+    "SUPABASE_SECRET_KEY"
 )
 
 
-# ============================================================
-# DATE RANGE
-# ============================================================
+if not SUPABASE_URL:
 
-END_DATE = datetime.now(
-    timezone.utc
-)
+    raise RuntimeError(
+        "SUPABASE_URL is missing from .env"
+    )
 
-START_DATE = (
-    END_DATE -
-    timedelta(days=DAYS_BACK)
-)
 
-FROM_DATE = START_DATE.strftime(
-    "%Y-%m-%d"
-)
+if not SUPABASE_SECRET_KEY:
 
-TO_DATE = END_DATE.strftime(
-    "%Y-%m-%d"
+    raise RuntimeError(
+        "SUPABASE_SECRET_KEY is missing from .env"
+    )
+
+
+# Create Supabase client
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SECRET_KEY
 )
 
 
 # ============================================================
-# REQUEST WITH RETRY
+# NEWS API KEYS
+# ============================================================
+
+ALPHA_VANTAGE_KEY = os.getenv(
+    "ALPHA_VANTAGE_API_KEY"
+)
+
+FINNHUB_KEY = os.getenv(
+    "FINNHUB_API_KEY"
+)
+
+MARKETAUX_KEY = os.getenv(
+    "MARKETAUX_API_KEY"
+)
+
+
+# ============================================================
+# STOCKS
+# ============================================================
+
+STOCK_SYMBOLS = [
+
+    "NVDA",
+    "AAPL",
+    "MSFT",
+    "AMZN",
+    "GOOGL",
+    "GOOG",
+    "META",
+    "AVGO",
+    "TSLA",
+    "WMT",
+    "COST",
+    "NFLX",
+    "AMD",
+    "CSCO",
+    "ADBE",
+    "QCOM",
+    "INTC",
+    "AMAT",
+    "INTU",
+    "TXN",
+
+]
+
+
+# ============================================================
+# API RUN STATUS
+# ============================================================
+#
+# IMPORTANT:
+#
+# Every execution of this Python file starts with all APIs
+# enabled.
+#
+# If an API hits its quota/rate limit:
+#
+#     API → disabled for THIS RUN ONLY
+#
+# Other APIs continue.
+#
+# When the next hourly Cloud Run execution starts:
+#
+#     all APIs → enabled again
+#
+# ============================================================
+
+api_enabled = {
+
+    "Alpha Vantage": True,
+
+    "Finnhub": True,
+
+    "Marketaux": True,
+
+}
+
+
+# ============================================================
+# API ARTICLE COUNTERS
+# ============================================================
+
+api_article_counts = {
+
+    "Alpha Vantage": 0,
+
+    "Finnhub": 0,
+
+    "Marketaux": 0,
+
+}
+
+
+# ============================================================
+# TIME WINDOW
+# ============================================================
+
+def get_time_window():
+
+    end_time = datetime.now(
+        timezone.utc
+    )
+
+    start_time = (
+        end_time
+        - timedelta(
+            hours=LOOKBACK_HOURS
+        )
+    )
+
+    return start_time, end_time
+
+
+# ============================================================
+# HTTP REQUEST WITH RETRY
 # ============================================================
 
 def request_with_retry(
+    method,
     url,
-    params
+    **kwargs
 ):
 
     last_error = None
@@ -109,13 +206,12 @@ def request_with_retry(
 
         try:
 
-            response = requests.get(
+            response = requests.request(
+                method,
                 url,
-                params=params,
-                timeout=REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT,
+                **kwargs
             )
-
-            response.raise_for_status()
 
             return response
 
@@ -124,20 +220,18 @@ def request_with_retry(
             last_error = error
 
             print(
-                f"    Request failed "
-                f"(attempt {attempt}/{MAX_RETRIES}): "
+                f"Request failed "
+                f"(attempt {attempt}/"
+                f"{MAX_RETRIES}): "
                 f"{error}"
             )
 
             if attempt < MAX_RETRIES:
 
-                wait_time = (
-                    RETRY_DELAY *
-                    (2 ** (attempt - 1))
-                )
+                wait_time = attempt * 2
 
                 print(
-                    f"    Retrying in "
+                    f"Retrying in "
                     f"{wait_time} seconds..."
                 )
 
@@ -149,50 +243,127 @@ def request_with_retry(
 
 
 # ============================================================
-# API KEY STATUS
+# API LIMIT / QUOTA DETECTION
 # ============================================================
 
-def check_api_keys():
+def response_is_limit(
+    response,
+    data=None
+):
 
-    print("\nAPI KEY STATUS")
-    print("----------------------------------------")
+    # --------------------------------------------------------
+    # HTTP status codes
+    # --------------------------------------------------------
 
-    print(
-        "Alpha Vantage:",
-        "OK"
-        if ALPHA_VANTAGE_API_KEY
-        else "MISSING"
-    )
+    if response is not None:
 
-    print(
-        "Finnhub:",
-        "OK"
-        if FINNHUB_API_KEY
-        else "MISSING"
-    )
+        if response.status_code in (
 
-    print(
-        "Marketaux:",
-        "OK"
-        if MARKETAUX_API_KEY
-        else "MISSING"
-    )
+            401,
+            403,
+            429,
 
-    print("----------------------------------------")
+        ):
+
+            return True
+
+
+    # --------------------------------------------------------
+    # API response text
+    # --------------------------------------------------------
+
+    if data is not None:
+
+        try:
+
+            text = str(
+                data
+            ).lower()
+
+        except Exception:
+
+            text = ""
+
+
+        limit_phrases = [
+
+            "rate limit",
+
+            "rate_limit",
+
+            "rate-limit",
+
+            "quota",
+
+            "quota reached",
+
+            "limit reached",
+
+            "api limit",
+
+            "too many requests",
+
+            "premium endpoint",
+
+            "call frequency",
+
+            "frequency limit",
+
+            "daily limit",
+
+        ]
+
+
+        for phrase in limit_phrases:
+
+            if phrase in text:
+
+                return True
+
+
+    return False
 
 
 # ============================================================
-# 1. ALPHA VANTAGE
+# ALPHA VANTAGE
 # ============================================================
 
 def fetch_alpha_vantage(
     symbol,
-    company_name
+    start_time,
+    end_time
 ):
+
+    api_name = "Alpha Vantage"
+
+
+    # --------------------------------------------------------
+    # Already disabled during this run
+    # --------------------------------------------------------
+
+    if not api_enabled[api_name]:
+
+        return []
+
+
+    # --------------------------------------------------------
+    # API key check
+    # --------------------------------------------------------
+
+    if not ALPHA_VANTAGE_KEY:
+
+        print(
+            "Alpha Vantage: "
+            "API KEY MISSING"
+        )
+
+        return []
+
 
     url = (
         "https://www.alphavantage.co/query"
     )
+
 
     params = {
 
@@ -203,126 +374,201 @@ def fetch_alpha_vantage(
             symbol,
 
         "time_from":
-            START_DATE.strftime(
+            start_time.strftime(
+                "%Y%m%dT%H%M"
+            ),
+
+        "time_to":
+            end_time.strftime(
                 "%Y%m%dT%H%M"
             ),
 
         "limit":
-            LIMIT,
+            1000,
 
         "apikey":
-            ALPHA_VANTAGE_API_KEY
+            ALPHA_VANTAGE_KEY,
+
     }
 
-    response = request_with_retry(
-        url,
-        params
-    )
 
-    data = response.json()
+    try:
 
-
-    # --------------------------------------------------------
-    # API errors
-    # --------------------------------------------------------
-
-    if "Error Message" in data:
-
-        raise Exception(
-            data["Error Message"]
-        )
-
-    if "Note" in data:
-
-        raise Exception(
-            data["Note"]
-        )
-
-    if "Information" in data:
-
-        raise Exception(
-            data["Information"]
+        response = request_with_retry(
+            "GET",
+            url,
+            params=params
         )
 
 
-    articles = []
+        data = response.json()
 
 
-    # --------------------------------------------------------
-    # Parse articles
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # LIMIT DETECTION
+        # ----------------------------------------------------
 
-    for item in data.get(
-        "feed",
-        []
-    ):
+        if response_is_limit(
+            response,
+            data
+        ):
 
-        articles.append({
+            print(
+                "Alpha Vantage: "
+                "API LIMIT/QUOTA DETECTED"
+            )
 
-            "source_api":
-                "Alpha Vantage",
+            print(
+                "Alpha Vantage: "
+                "DISABLED FOR THIS RUN"
+            )
 
-            "exchange":
-                "NASDAQ",
+            api_enabled[
+                api_name
+            ] = False
 
-            "symbol":
-                symbol,
-
-            "company":
-                company_name,
-
-            "published_at":
-                item.get(
-                    "time_published"
-                ),
-
-            "title":
-                item.get(
-                    "title"
-                ),
-
-            "description":
-                item.get(
-                    "summary"
-                ),
-
-            "source":
-                item.get(
-                    "source"
-                ),
-
-            "url":
-                item.get(
-                    "url"
-                ),
-
-            "sentiment_score":
-                item.get(
-                    "overall_sentiment_score"
-                ),
-
-            "sentiment_label":
-                item.get(
-                    "overall_sentiment_label"
-                )
-        })
+            return []
 
 
-    return articles
+        # ----------------------------------------------------
+        # Extract feed
+        # ----------------------------------------------------
+
+        feed = data.get(
+            "feed",
+            []
+        )
+
+
+        if not isinstance(
+            feed,
+            list
+        ):
+
+            return []
+
+
+        articles = []
+
+
+        for item in feed:
+
+            published_at = None
+
+
+            raw_time = item.get(
+                "time_published"
+            )
+
+
+            if raw_time:
+
+                try:
+
+                    published_at = (
+
+                        datetime.strptime(
+                            raw_time,
+                            "%Y%m%dT%H%M%S"
+                        )
+
+                        .replace(
+                            tzinfo=timezone.utc
+                        )
+
+                        .isoformat()
+
+                    )
+
+                except ValueError:
+
+                    published_at = None
+
+
+            articles.append({
+
+                "source_api":
+                    api_name,
+
+                "symbol":
+                    symbol,
+
+                "title":
+                    item.get(
+                        "title"
+                    ),
+
+                "description":
+                    item.get(
+                        "summary"
+                    ),
+
+                "source":
+                    item.get(
+                        "source"
+                    ),
+
+                "url":
+                    item.get(
+                        "url"
+                    ),
+
+                "published_at":
+                    published_at,
+
+            })
+
+
+        api_article_counts[
+            api_name
+        ] += len(articles)
+
+
+        return articles
+
+
+    except Exception as error:
+
+        print(
+            f"Alpha Vantage ERROR: "
+            f"{error}"
+        )
+
+        return []
 
 
 # ============================================================
-# 2. FINNHUB
+# FINNHUB
 # ============================================================
 
 def fetch_finnhub(
     symbol,
-    company_name
+    start_time,
+    end_time
 ):
+
+    api_name = "Finnhub"
+
+
+    if not api_enabled[api_name]:
+
+        return []
+
+
+    if not FINNHUB_KEY:
+
+        print(
+            "Finnhub: "
+            "API KEY MISSING"
+        )
+
+        return []
+
 
     url = (
         "https://finnhub.io/api/v1/company-news"
     )
+
 
     params = {
 
@@ -330,125 +576,234 @@ def fetch_finnhub(
             symbol,
 
         "from":
-            FROM_DATE,
+            start_time.strftime(
+                "%Y-%m-%d"
+            ),
 
         "to":
-            TO_DATE,
+            end_time.strftime(
+                "%Y-%m-%d"
+            ),
 
         "token":
-            FINNHUB_API_KEY
+            FINNHUB_KEY,
+
     }
 
-    response = request_with_retry(
-        url,
-        params
-    )
 
-    data = response.json()
+    try:
 
-
-    if isinstance(
-        data,
-        dict
-    ):
-
-        if "error" in data:
-
-            raise Exception(
-                data["error"]
-            )
-
-
-    articles = []
-
-
-    for item in data:
-
-        published_time = (
-            item.get(
-                "datetime"
-            )
+        response = request_with_retry(
+            "GET",
+            url,
+            params=params
         )
 
 
-        if published_time:
+        data = response.json()
 
-            published_time = (
-                datetime.fromtimestamp(
-                    published_time,
-                    tz=timezone.utc
-                ).isoformat()
+
+        # ----------------------------------------------------
+        # LIMIT DETECTION
+        # ----------------------------------------------------
+
+        if response_is_limit(
+            response,
+            data
+        ):
+
+            print(
+                "Finnhub: "
+                "API LIMIT/QUOTA DETECTED"
+            )
+
+            print(
+                "Finnhub: "
+                "DISABLED FOR THIS RUN"
+            )
+
+            api_enabled[
+                api_name
+            ] = False
+
+            return []
+
+
+        if not isinstance(
+            data,
+            list
+        ):
+
+            return []
+
+
+        articles = []
+
+
+        for item in data:
+
+            published_at = None
+
+
+            timestamp = item.get(
+                "datetime"
             )
 
 
-        articles.append({
+            if timestamp:
 
-            "source_api":
-                "Finnhub",
+                try:
 
-            "exchange":
-                "NASDAQ",
+                    published_at = (
 
-            "symbol":
-                symbol,
+                        datetime.fromtimestamp(
+                            timestamp,
+                            tz=timezone.utc
+                        )
 
-            "company":
-                company_name,
+                        .isoformat()
 
-            "published_at":
-                published_time,
+                    )
 
-            "title":
-                item.get(
-                    "headline"
-                ),
+                except (
+                    ValueError,
+                    OSError,
+                    OverflowError
+                ):
 
-            "description":
-                item.get(
-                    "summary"
-                ),
-
-            "source":
-                item.get(
-                    "source"
-                ),
-
-            "url":
-                item.get(
-                    "url"
-                ),
-
-            "sentiment_score":
-                None,
-
-            "sentiment_label":
-                None
-        })
+                    published_at = None
 
 
-    return articles
+            # ------------------------------------------------
+            # Check actual article time
+            # ------------------------------------------------
+
+            if published_at:
+
+                try:
+
+                    article_time = (
+                        datetime.fromisoformat(
+                            published_at
+                        )
+                    )
+
+
+                    if (
+
+                        article_time
+                        < start_time
+
+                        or
+
+                        article_time
+                        > end_time
+
+                    ):
+
+                        continue
+
+
+                except ValueError:
+
+                    pass
+
+
+            articles.append({
+
+                "source_api":
+                    api_name,
+
+                "symbol":
+                    symbol,
+
+                "title":
+                    item.get(
+                        "headline"
+                    ),
+
+                "description":
+                    item.get(
+                        "summary"
+                    ),
+
+                "source":
+                    item.get(
+                        "source"
+                    ),
+
+                "url":
+                    item.get(
+                        "url"
+                    ),
+
+                "published_at":
+                    published_at,
+
+            })
+
+
+        api_article_counts[
+            api_name
+        ] += len(articles)
+
+
+        return articles
+
+
+    except Exception as error:
+
+        print(
+            f"Finnhub ERROR: "
+            f"{error}"
+        )
+
+        return []
 
 
 # ============================================================
-# 3. MARKETAUX
+# MARKETAUX
 # ============================================================
 
 def fetch_marketaux(
     symbol,
-    company_name
+    start_time,
+    end_time
 ):
+
+    api_name = "Marketaux"
+
+
+    if not api_enabled[api_name]:
+
+        return []
+
+
+    if not MARKETAUX_KEY:
+
+        print(
+            "Marketaux: "
+            "API KEY MISSING"
+        )
+
+        return []
+
 
     url = (
         "https://api.marketaux.com/v1/news/all"
     )
 
-    params = {
 
-        "api_token":
-            MARKETAUX_API_KEY,
+    params = {
 
         "symbols":
             symbol,
+
+        "published_after":
+            start_time.isoformat(),
+
+        "published_before":
+            end_time.isoformat(),
 
         "language":
             "en",
@@ -457,317 +812,547 @@ def fetch_marketaux(
             "true",
 
         "limit":
-            LIMIT,
+            100,
 
-        "published_after":
-            START_DATE.strftime(
-                "%Y-%m-%dT%H:%M:%S"
-            )
+        "api_token":
+            MARKETAUX_KEY,
+
     }
 
 
-    response = request_with_retry(
-        url,
-        params
-    )
+    try:
 
-    data = response.json()
-
-
-    if "error" in data:
-
-        error = data["error"]
-
-        if isinstance(
-            error,
-            dict
-        ):
-
-            message = error.get(
-                "message",
-                str(error)
-            )
-
-        else:
-
-            message = str(error)
-
-        raise Exception(
-            message
+        response = request_with_retry(
+            "GET",
+            url,
+            params=params
         )
 
 
-    articles = []
-
-
-    for item in data.get(
-        "data",
-        []
-    ):
-
-        sentiment_score = None
+        data = response.json()
 
 
         # ----------------------------------------------------
-        # Find sentiment for target symbol
+        # LIMIT DETECTION
         # ----------------------------------------------------
 
-        for entity in item.get(
-            "entities",
-            []
+        if response_is_limit(
+            response,
+            data
         ):
 
-            if entity.get(
-                "symbol"
-            ) == symbol:
+            print(
+                "Marketaux: "
+                "API LIMIT/QUOTA DETECTED"
+            )
 
-                sentiment_score = (
-                    entity.get(
-                        "sentiment_score"
-                    )
+            print(
+                "Marketaux: "
+                "DISABLED FOR THIS RUN"
+            )
+
+            api_enabled[
+                api_name
+            ] = False
+
+            return []
+
+
+        feed = data.get(
+            "data",
+            []
+        )
+
+
+        if not isinstance(
+            feed,
+            list
+        ):
+
+            return []
+
+
+        articles = []
+
+
+        for item in feed:
+
+            articles.append({
+
+                "source_api":
+                    api_name,
+
+                "symbol":
+                    symbol,
+
+                "title":
+                    item.get(
+                        "title"
+                    ),
+
+                "description":
+                    item.get(
+                        "description"
+                    ),
+
+                "source":
+                    item.get(
+                        "source"
+                    ),
+
+                "url":
+                    item.get(
+                        "url"
+                    ),
+
+                "published_at":
+                    item.get(
+                        "published_at"
+                    ),
+
+            })
+
+
+        api_article_counts[
+            api_name
+        ] += len(articles)
+
+
+        return articles
+
+
+    except Exception as error:
+
+        print(
+            f"Marketaux ERROR: "
+            f"{error}"
+        )
+
+        return []
+
+
+# ============================================================
+# LOAD STOCKS FROM SUPABASE
+# ============================================================
+
+def load_stock_map():
+
+    print(
+        "\nLoading stocks from Supabase..."
+    )
+
+
+    response = (
+
+        supabase
+
+        .table(
+            "stocks"
+        )
+
+        .select(
+            "id,symbol"
+        )
+
+        .execute()
+
+    )
+
+
+    stock_map = {
+
+        row["symbol"]:
+            row["id"]
+
+        for row in response.data
+
+    }
+
+
+    missing = [
+
+        symbol
+
+        for symbol in STOCK_SYMBOLS
+
+        if symbol not in stock_map
+
+    ]
+
+
+    if missing:
+
+        raise RuntimeError(
+
+            "These stocks are missing "
+            "from Supabase: "
+
+            + ", ".join(
+                missing
+            )
+
+        )
+
+
+    print(
+        f"Stocks loaded: "
+        f"{len(stock_map)}"
+    )
+
+
+    return stock_map
+
+
+# ============================================================
+# CHECK EXISTING URLS IN SUPABASE
+# ============================================================
+
+def get_existing_urls(
+    urls
+):
+
+    urls = list({
+
+        url
+
+        for url in urls
+
+        if url
+
+    })
+
+
+    existing = set()
+
+
+    for start in range(
+
+        0,
+
+        len(urls),
+
+        BATCH_SIZE
+
+    ):
+
+        batch = urls[
+            start:
+            start + BATCH_SIZE
+        ]
+
+
+        if not batch:
+
+            continue
+
+
+        response = (
+
+            supabase
+
+            .table(
+                "news_articles"
+            )
+
+            .select(
+                "url"
+            )
+
+            .in_(
+                "url",
+                batch
+            )
+
+            .execute()
+
+        )
+
+
+        for row in response.data:
+
+            url = row.get(
+                "url"
+            )
+
+
+            if url:
+
+                existing.add(
+                    url
                 )
 
-                break
 
-
-        articles.append({
-
-            "source_api":
-                "Marketaux",
-
-            "exchange":
-                "NASDAQ",
-
-            "symbol":
-                symbol,
-
-            "company":
-                company_name,
-
-            "published_at":
-                item.get(
-                    "published_at"
-                ),
-
-            "title":
-                item.get(
-                    "title"
-                ),
-
-            "description":
-                item.get(
-                    "description"
-                ),
-
-            "source":
-                item.get(
-                    "source"
-                ),
-
-            "url":
-                item.get(
-                    "url"
-                ),
-
-            "sentiment_score":
-                sentiment_score,
-
-            "sentiment_label":
-                None
-        })
-
-
-    return articles
+    return existing
 
 
 # ============================================================
 # REMOVE DUPLICATES
 # ============================================================
 
-def remove_duplicates(df):
-
-    if df.empty:
-
-        return df
-
-
-    # --------------------------------------------------------
-    # Remove missing titles
-    # --------------------------------------------------------
-
-    df = df.dropna(
-        subset=[
-            "title"
-        ]
-    )
-
-
-    df["title"] = (
-        df["title"]
-        .astype(str)
-        .str.strip()
-    )
-
-
-    df = df[
-        df["title"] != ""
-    ]
-
-
-    # --------------------------------------------------------
-    # Normalize URL
-    # --------------------------------------------------------
-
-    df["url"] = (
-        df["url"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-    )
-
-
-    # --------------------------------------------------------
-    # Remove duplicate URLs
-    # --------------------------------------------------------
-
-    with_url = df[
-        df["url"] != ""
-    ].drop_duplicates(
-        subset=[
-            "url"
-        ],
-        keep="first"
-    )
-
-
-    without_url = df[
-        df["url"] == ""
-    ]
-
-
-    df = pd.concat(
-        [
-            with_url,
-            without_url
-        ],
-        ignore_index=True
-    )
-
-
-    # --------------------------------------------------------
-    # Remove duplicate headlines
-    # --------------------------------------------------------
-
-    df["title_normalized"] = (
-        df["title"]
-        .str.lower()
-        .str.strip()
-    )
-
-
-    df = df.drop_duplicates(
-        subset=[
-            "title_normalized"
-        ],
-        keep="first"
-    )
-
-
-    df = df.drop(
-        columns=[
-            "title_normalized"
-        ]
-    )
-
-
-    return df
-
-
-# ============================================================
-# SAVE STOCK NEWS
-# ============================================================
-
-def save_stock_news(
-    symbol,
+def remove_duplicates(
     articles
 ):
 
-    if not articles:
+    # --------------------------------------------------------
+    # Remove articles without URL
+    # --------------------------------------------------------
 
-        print(
-            f"    No articles collected for {symbol}"
+    valid_articles = [
+
+        article
+
+        for article in articles
+
+        if article.get(
+            "url"
         )
 
-        return 0
-
-
-    df = pd.DataFrame(
-        articles
-    )
-
-
-    df = remove_duplicates(
-        df
-    )
+    ]
 
 
     # --------------------------------------------------------
-    # Convert timestamp
+    # Remove duplicate URLs from current fetch
     # --------------------------------------------------------
 
-    df["published_at"] = (
-        pd.to_datetime(
-            df["published_at"],
-            errors="coerce",
-            utc=True
-        )
-    )
+    unique_articles = {}
 
 
-    # --------------------------------------------------------
-    # Remove invalid timestamps
-    # --------------------------------------------------------
+    for article in valid_articles:
 
-    df = df.dropna(
-        subset=[
-            "published_at"
+        url = article[
+            "url"
         ]
-    )
 
 
-    # --------------------------------------------------------
-    # Sort newest first
-    # --------------------------------------------------------
+        if url not in unique_articles:
 
-    df = df.sort_values(
-        "published_at",
-        ascending=False
-    )
+            unique_articles[
+                url
+            ] = article
 
 
-    # --------------------------------------------------------
-    # Save
-    # --------------------------------------------------------
-
-    output_file = (
-        NASDAQ_DIR /
-        f"{symbol}.csv"
-    )
-
-
-    df.to_csv(
-        output_file,
-        index=False
+    unique_articles = list(
+        unique_articles.values()
     )
 
 
     print(
-        f"    Saved {len(df)} articles → "
-        f"{output_file}"
+        f"Unique in current fetch: "
+        f"{len(unique_articles)}"
     )
 
 
-    return len(df)
+    # --------------------------------------------------------
+    # Check Supabase
+    # --------------------------------------------------------
+
+    urls = [
+
+        article["url"]
+
+        for article in unique_articles
+
+    ]
+
+
+    existing_urls = (
+        get_existing_urls(
+            urls
+        )
+    )
+
+
+    print(
+        f"Already in Supabase: "
+        f"{len(existing_urls)}"
+    )
+
+
+    # --------------------------------------------------------
+    # Only new articles
+    # --------------------------------------------------------
+
+    new_articles = [
+
+        article
+
+        for article in unique_articles
+
+        if article["url"]
+        not in existing_urls
+
+    ]
+
+
+    print(
+        f"New articles: "
+        f"{len(new_articles)}"
+    )
+
+
+    return new_articles
+
+
+# ============================================================
+# STORE RAW NEWS IN SUPABASE
+# ============================================================
+
+def store_news(
+    articles,
+    stock_map
+):
+
+    if not articles:
+
+        return 0
+
+
+    records = []
+
+
+    for article in articles:
+
+        symbol = article[
+            "symbol"
+        ]
+
+
+        stock_id = stock_map.get(
+            symbol
+        )
+
+
+        if stock_id is None:
+
+            print(
+                f"Skipping {symbol}: "
+                "stock not found"
+            )
+
+            continue
+
+
+        records.append({
+
+            "stock_id":
+                stock_id,
+
+            "symbol":
+                symbol,
+
+            "title":
+                article.get(
+                    "title"
+                ),
+
+            "description":
+                article.get(
+                    "description"
+                ),
+
+            "text":
+                None,
+
+            "source":
+                article.get(
+                    "source"
+                ),
+
+            "url":
+                article.get(
+                    "url"
+                ),
+
+            "published_at":
+                article.get(
+                    "published_at"
+                ),
+
+            "source_api":
+                article.get(
+                    "source_api"
+                ),
+
+        })
+
+
+    inserted = 0
+
+
+    # --------------------------------------------------------
+    # Insert in batches
+    # --------------------------------------------------------
+
+    for start in range(
+
+        0,
+
+        len(records),
+
+        BATCH_SIZE
+
+    ):
+
+        batch = records[
+            start:
+            start + BATCH_SIZE
+        ]
+
+
+        try:
+
+            response = (
+
+                supabase
+
+                .table(
+                    "news_articles"
+                )
+
+                .upsert(
+
+                    batch,
+
+                    on_conflict="url",
+
+                    ignore_duplicates=True
+
+                )
+
+                .execute()
+
+            )
+
+
+            inserted_count = len(
+                response.data
+            )
+
+
+            inserted += (
+                inserted_count
+            )
+
+
+            print(
+
+                f"Supabase batch: "
+                f"{inserted_count} "
+                f"new rows"
+
+            )
+
+
+        except Exception as error:
+
+            print(
+                "Supabase insert error:"
+            )
+
+            print(error)
+
+
+    return inserted
 
 
 # ============================================================
@@ -775,26 +1360,24 @@ def save_stock_news(
 # ============================================================
 
 def process_stock(
+
     symbol,
-    info
+
+    stock_map,
+
+    start_time,
+
+    end_time
+
 ):
 
-    company_name = info[
-        "name"
-    ]
-
+    print("\n" + "=" * 60)
 
     print(
-        "\n----------------------------------------"
+        f"{symbol} | NASDAQ"
     )
 
-    print(
-        f"{symbol} | {company_name} | NASDAQ"
-    )
-
-    print(
-        "----------------------------------------"
-    )
+    print("=" * 60)
 
 
     all_articles = []
@@ -804,27 +1387,42 @@ def process_stock(
     # ALPHA VANTAGE
     # ========================================================
 
-    try:
+    if api_enabled[
+        "Alpha Vantage"
+    ]:
 
-        data = fetch_alpha_vantage(
-            symbol,
-            company_name
+        articles = (
+
+            fetch_alpha_vantage(
+
+                symbol,
+
+                start_time,
+
+                end_time
+
+            )
+
         )
+
 
         print(
-            f"    Alpha Vantage: "
-            f"{len(data)} articles"
+
+            f"Alpha Vantage: "
+            f"{len(articles)} articles"
+
         )
+
 
         all_articles.extend(
-            data
+            articles
         )
 
-    except Exception as error:
+
+    else:
 
         print(
-            f"    Alpha Vantage ERROR: "
-            f"{error}"
+            "Alpha Vantage: SKIPPED"
         )
 
 
@@ -832,27 +1430,42 @@ def process_stock(
     # FINNHUB
     # ========================================================
 
-    try:
+    if api_enabled[
+        "Finnhub"
+    ]:
 
-        data = fetch_finnhub(
-            symbol,
-            company_name
+        articles = (
+
+            fetch_finnhub(
+
+                symbol,
+
+                start_time,
+
+                end_time
+
+            )
+
         )
+
 
         print(
-            f"    Finnhub: "
-            f"{len(data)} articles"
+
+            f"Finnhub: "
+            f"{len(articles)} articles"
+
         )
+
 
         all_articles.extend(
-            data
+            articles
         )
 
-    except Exception as error:
+
+    else:
 
         print(
-            f"    Finnhub ERROR: "
-            f"{error}"
+            "Finnhub: SKIPPED"
         )
 
 
@@ -860,197 +1473,352 @@ def process_stock(
     # MARKETAUX
     # ========================================================
 
-    try:
+    if api_enabled[
+        "Marketaux"
+    ]:
 
-        data = fetch_marketaux(
-            symbol,
-            company_name
-        )
+        articles = (
 
-        print(
-            f"    Marketaux: "
-            f"{len(data)} articles"
-        )
+            fetch_marketaux(
 
-        all_articles.extend(
-            data
-        )
-
-    except Exception as error:
-
-        print(
-            f"    Marketaux ERROR: "
-            f"{error}"
-        )
-
-
-    # ========================================================
-    # SAVE
-    # ========================================================
-
-    total = save_stock_news(
-        symbol,
-        all_articles
-    )
-
-
-    return total
-
-
-# ============================================================
-# COLLECT ALL NASDAQ NEWS
-# ============================================================
-
-def collect_all_news():
-
-    print(
-        "\n========================================"
-    )
-
-    print(
-        "NASDAQ NEWS COLLECTION"
-    )
-
-    print(
-        "========================================"
-    )
-
-    print(
-        f"Date range: "
-        f"{FROM_DATE} → {TO_DATE}"
-    )
-
-    print(
-        f"Stocks: "
-        f"{len(NASDAQ_STOCKS)}"
-    )
-
-
-    check_api_keys()
-
-
-    # ========================================================
-    # SUMMARY
-    # ========================================================
-
-    summary = []
-
-
-    # ========================================================
-    # PROCESS STOCKS
-    # ========================================================
-
-    for symbol, info in NASDAQ_STOCKS.items():
-
-        total = process_stock(
-            symbol,
-            info
-        )
-
-
-        summary.append({
-
-            "exchange":
-                "NASDAQ",
-
-            "symbol":
                 symbol,
 
-            "company":
-                info["name"],
+                start_time,
 
-            "articles":
-                total
-        })
+                end_time
+
+            )
+
+        )
 
 
-        time.sleep(
-            STOCK_DELAY
+        print(
+
+            f"Marketaux: "
+            f"{len(articles)} articles"
+
+        )
+
+
+        all_articles.extend(
+            articles
+        )
+
+
+    else:
+
+        print(
+            "Marketaux: SKIPPED"
         )
 
 
     # ========================================================
-    # SUMMARY DATAFRAME
+    # DEDUPLICATION
     # ========================================================
 
-    summary_df = pd.DataFrame(
-        summary
-    )
-
-
-    summary_file = (
-        BASE_DIR /
-        "collection_summary.csv"
-    )
-
-
-    summary_df.to_csv(
-        summary_file,
-        index=False
-    )
-
-
-    # ========================================================
-    # FINAL REPORT
-    # ========================================================
-
-    print(
-        "\n========================================"
-    )
-
-    print(
-        "NEWS COLLECTION COMPLETE"
-    )
-
-    print(
-        "========================================"
-    )
-
-
-    print(
-        f"Stocks processed: "
-        f"{len(summary_df)}"
-    )
-
-
-    print(
-        f"Total unique articles: "
-        f"{summary_df['articles'].sum()}"
-    )
-
-
-    print(
-        "\nArticles by stock:"
-    )
-
-
-    print(
-        summary_df[
-            [
-                "symbol",
-                "company",
-                "articles"
-            ]
-        ].to_string(
-            index=False
+    new_articles = (
+        remove_duplicates(
+            all_articles
         )
     )
 
 
-    print(
-        f"\nSummary saved to:"
+    # ========================================================
+    # STORE
+    # ========================================================
+
+    inserted = store_news(
+
+        new_articles,
+
+        stock_map
+
     )
 
 
     print(
-        summary_file
+
+        f"New articles added: "
+        f"{inserted}"
+
     )
+
+
+    return inserted
 
 
 # ============================================================
 # MAIN
 # ============================================================
 
+def main():
+
+    print("\n")
+
+    print("=" * 60)
+
+    print(
+        "HOURLY RAW NEWS COLLECTOR"
+    )
+
+    print("=" * 60)
+
+
+    # ========================================================
+    # SHOW ENVIRONMENT
+    # ========================================================
+
+    print(
+        f"\n.env file:"
+    )
+
+    print(
+        str(ENV_FILE)
+    )
+
+
+    print(
+        "\nEnvironment loaded:"
+    )
+
+
+    print(
+
+        "Supabase URL:",
+        "READY"
+        if SUPABASE_URL
+        else "MISSING"
+
+    )
+
+
+    print(
+
+        "Supabase secret:",
+        "READY"
+        if SUPABASE_SECRET_KEY
+        else "MISSING"
+
+    )
+
+
+    print(
+
+        "Alpha Vantage:",
+        "READY"
+        if ALPHA_VANTAGE_KEY
+        else "MISSING"
+
+    )
+
+
+    print(
+
+        "Finnhub:",
+        "READY"
+        if FINNHUB_KEY
+        else "MISSING"
+
+    )
+
+
+    print(
+
+        "Marketaux:",
+        "READY"
+        if MARKETAUX_KEY
+        else "MISSING"
+
+    )
+
+
+    # ========================================================
+    # TIME WINDOW
+    # ========================================================
+
+    start_time, end_time = (
+        get_time_window()
+    )
+
+
+    print(
+        "\nWindow:"
+    )
+
+
+    print(
+
+        start_time.isoformat()
+
+        + " → "
+
+        + end_time.isoformat()
+
+    )
+
+
+    print(
+
+        f"\nStocks: "
+        f"{len(STOCK_SYMBOLS)}"
+
+    )
+
+
+    # ========================================================
+    # LOAD STOCKS
+    # ========================================================
+
+    stock_map = (
+        load_stock_map()
+    )
+
+
+    # ========================================================
+    # PROCESS STOCKS
+    # ========================================================
+
+    total_new = 0
+
+
+    for symbol in STOCK_SYMBOLS:
+
+        try:
+
+            inserted = process_stock(
+
+                symbol,
+
+                stock_map,
+
+                start_time,
+
+                end_time
+
+            )
+
+
+            total_new += inserted
+
+
+        except Exception as error:
+
+            print("\n")
+
+            print(
+                f"{symbol} FAILED"
+            )
+
+
+            print(
+                error
+            )
+
+
+            print(
+
+                "Continuing with "
+                "remaining stocks..."
+
+            )
+
+
+    # ========================================================
+    # FINAL REPORT
+    # ========================================================
+
+    print("\n")
+
+    print("=" * 60)
+
+    print(
+        "HOURLY COLLECTION COMPLETE"
+    )
+
+    print("=" * 60)
+
+
+    print(
+
+        f"Total new articles: "
+        f"{total_new}"
+
+    )
+
+
+    # ========================================================
+    # API TOTALS
+    # ========================================================
+
+    print("\nAPI ARTICLE COUNTS")
+
+
+    for api_name in (
+
+        "Alpha Vantage",
+
+        "Finnhub",
+
+        "Marketaux",
+
+    ):
+
+        print(
+
+            f"{api_name}: "
+            f"{api_article_counts[api_name]}"
+
+        )
+
+
+    # ========================================================
+    # FINAL API STATUS
+    # ========================================================
+
+    print(
+        "\nFINAL API STATUS"
+    )
+
+
+    for api_name in (
+
+        "Alpha Vantage",
+
+        "Finnhub",
+
+        "Marketaux",
+
+    ):
+
+        if api_enabled[
+            api_name
+        ]:
+
+            status = "ACTIVE"
+
+        else:
+
+            status = (
+                "LIMIT HIT - "
+                "DISABLED THIS RUN"
+            )
+
+
+        print(
+
+            f"{api_name}: "
+            f"{status}"
+
+        )
+
+
+    print("\n")
+
+
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
 if __name__ == "__main__":
 
-    collect_all_news()
+    main()

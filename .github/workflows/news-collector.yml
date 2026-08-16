@@ -1,0 +1,28 @@
+name: News Collector
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+
+  workflow_dispatch:
+
+jobs:
+  collect-news:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t stockprice-news .
+
+      - name: Run news collector
+        run: |
+          docker run --rm \
+            -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            -e SUPABASE_SECRET_KEY="${{ secrets.SUPABASE_SECRET_KEY }}" \
+            -e ALPHA_VANTAGE_API_KEY="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
+            -e FINNHUB_API_KEY="${{ secrets.FINNHUB_API_KEY }}" \
+            -e MARKETAUX_API_KEY="${{ secrets.MARKETAUX_API_KEY }}" \
+            stockprice-news
