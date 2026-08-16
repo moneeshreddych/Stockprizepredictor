@@ -4,22 +4,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
+import yfinance as yf
 from dotenv import load_dotenv
 from supabase import create_client
 
 
 # ============================================================
-# PROJECT ROOT / .ENV
+# PROJECT / ENVIRONMENT
 # ============================================================
 
-# File:
-# C:\stockpricepredictor\news\news_collector.py
-#
-# Project root:
-# C:\stockpricepredictor
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
 ENV_FILE = PROJECT_ROOT / ".env"
 
 load_dotenv(ENV_FILE)
@@ -39,7 +33,148 @@ BATCH_SIZE = 100
 
 
 # ============================================================
-# SUPABASE CONFIGURATION
+# STOCKS
+# ============================================================
+
+STOCK_SYMBOLS = [
+    "NVDA",
+    "AAPL",
+    "MSFT",
+    "AMZN",
+    "GOOGL",
+    "GOOG",
+    "META",
+    "AVGO",
+    "TSLA",
+    "WMT",
+    "COST",
+    "NFLX",
+    "AMD",
+    "CSCO",
+    "ADBE",
+    "QCOM",
+    "INTC",
+    "AMAT",
+    "INTU",
+    "TXN",
+]
+
+
+# ============================================================
+# STOCK ALIASES
+# ============================================================
+
+STOCK_ALIASES = {
+
+    "NVDA": [
+        "NVDA",
+        "NVIDIA",
+    ],
+
+    "AAPL": [
+        "AAPL",
+        "Apple",
+    ],
+
+    "MSFT": [
+        "MSFT",
+        "Microsoft",
+    ],
+
+    "AMZN": [
+        "AMZN",
+        "Amazon",
+    ],
+
+    "GOOGL": [
+        "GOOGL",
+        "GOOG",
+        "Alphabet",
+        "Google",
+    ],
+
+    "GOOG": [
+        "GOOG",
+        "GOOGL",
+        "Alphabet",
+        "Google",
+    ],
+
+    "META": [
+        "META",
+        "Meta",
+        "Facebook",
+    ],
+
+    "AVGO": [
+        "AVGO",
+        "Broadcom",
+    ],
+
+    "TSLA": [
+        "TSLA",
+        "Tesla",
+    ],
+
+    "WMT": [
+        "WMT",
+        "Walmart",
+    ],
+
+    "COST": [
+        "COST",
+        "Costco",
+    ],
+
+    "NFLX": [
+        "NFLX",
+        "Netflix",
+    ],
+
+    "AMD": [
+        "AMD",
+        "Advanced Micro Devices",
+    ],
+
+    "CSCO": [
+        "CSCO",
+        "Cisco",
+    ],
+
+    "ADBE": [
+        "ADBE",
+        "Adobe",
+    ],
+
+    "QCOM": [
+        "QCOM",
+        "Qualcomm",
+    ],
+
+    "INTC": [
+        "INTC",
+        "Intel",
+    ],
+
+    "AMAT": [
+        "AMAT",
+        "Applied Materials",
+    ],
+
+    "INTU": [
+        "INTU",
+        "Intuit",
+    ],
+
+    "TXN": [
+        "TXN",
+        "Texas Instruments",
+    ],
+}
+
+
+# ============================================================
+# SUPABASE
 # ============================================================
 
 SUPABASE_URL = os.getenv(
@@ -65,16 +200,14 @@ if not SUPABASE_SECRET_KEY:
     )
 
 
-# Create Supabase client
-
 supabase = create_client(
     SUPABASE_URL,
-    SUPABASE_SECRET_KEY
+    SUPABASE_SECRET_KEY,
 )
 
 
 # ============================================================
-# NEWS API KEYS
+# API KEYS
 # ============================================================
 
 ALPHA_VANTAGE_KEY = os.getenv(
@@ -91,54 +224,7 @@ MARKETAUX_KEY = os.getenv(
 
 
 # ============================================================
-# STOCKS
-# ============================================================
-
-STOCK_SYMBOLS = [
-
-    "NVDA",
-    "AAPL",
-    "MSFT",
-    "AMZN",
-    "GOOGL",
-    "GOOG",
-    "META",
-    "AVGO",
-    "TSLA",
-    "WMT",
-    "COST",
-    "NFLX",
-    "AMD",
-    "CSCO",
-    "ADBE",
-    "QCOM",
-    "INTC",
-    "AMAT",
-    "INTU",
-    "TXN",
-
-]
-
-
-# ============================================================
-# API RUN STATUS
-# ============================================================
-#
-# IMPORTANT:
-#
-# Every execution of this Python file starts with all APIs
-# enabled.
-#
-# If an API hits its quota/rate limit:
-#
-#     API → disabled for THIS RUN ONLY
-#
-# Other APIs continue.
-#
-# When the next hourly Cloud Run execution starts:
-#
-#     all APIs → enabled again
-#
+# API STATUS
 # ============================================================
 
 api_enabled = {
@@ -148,6 +234,8 @@ api_enabled = {
     "Finnhub": True,
 
     "Marketaux": True,
+
+    "yfinance": True,
 
 }
 
@@ -163,6 +251,8 @@ api_article_counts = {
     "Finnhub": 0,
 
     "Marketaux": 0,
+
+    "yfinance": 0,
 
 }
 
@@ -184,7 +274,10 @@ def get_time_window():
         )
     )
 
-    return start_time, end_time
+    return (
+        start_time,
+        end_time,
+    )
 
 
 # ============================================================
@@ -228,7 +321,9 @@ def request_with_retry(
 
             if attempt < MAX_RETRIES:
 
-                wait_time = attempt * 2
+                wait_time = (
+                    attempt * 2
+                )
 
                 print(
                     f"Retrying in "
@@ -243,85 +338,109 @@ def request_with_retry(
 
 
 # ============================================================
-# API LIMIT / QUOTA DETECTION
+# API LIMIT DETECTION
 # ============================================================
 
 def response_is_limit(
     response,
-    data=None
+    data
 ):
 
-    # --------------------------------------------------------
-    # HTTP status codes
-    # --------------------------------------------------------
+    if response.status_code in (
+        401,
+        403,
+        429,
+    ):
 
-    if response is not None:
+        return True
 
-        if response.status_code in (
 
-            401,
-            403,
-            429,
+    text = str(
+        data
+    ).lower()
 
-        ):
+
+    limit_words = [
+
+        "rate limit",
+
+        "rate_limit",
+
+        "quota",
+
+        "limit reached",
+
+        "api call frequency",
+
+        "thank you for using alpha vantage",
+
+        "premium endpoint",
+
+    ]
+
+
+    for word in limit_words:
+
+        if word in text:
 
             return True
 
 
-    # --------------------------------------------------------
-    # API response text
-    # --------------------------------------------------------
-
-    if data is not None:
-
-        try:
-
-            text = str(
-                data
-            ).lower()
-
-        except Exception:
-
-            text = ""
-
-
-        limit_phrases = [
-
-            "rate limit",
-
-            "rate_limit",
-
-            "rate-limit",
-
-            "quota",
-
-            "quota reached",
-
-            "limit reached",
-
-            "api limit",
-
-            "too many requests",
-
-            "premium endpoint",
-
-            "call frequency",
-
-            "frequency limit",
-
-            "daily limit",
-
-        ]
-
-
-        for phrase in limit_phrases:
-
-            if phrase in text:
-
-                return True
-
-
     return False
+
+
+# ============================================================
+# STOCK MATCHING
+# ============================================================
+
+def find_related_stocks(
+    article
+):
+
+    title = (
+        article.get(
+            "title"
+        )
+        or ""
+    )
+
+    description = (
+        article.get(
+            "description"
+        )
+        or ""
+    )
+
+
+    text = (
+        f"{title} "
+        f"{description}"
+    ).lower()
+
+
+    matches = []
+
+
+    for symbol in STOCK_SYMBOLS:
+
+        aliases = STOCK_ALIASES.get(
+            symbol,
+            [symbol]
+        )
+
+
+        for alias in aliases:
+
+            if alias.lower() in text:
+
+                matches.append(
+                    symbol
+                )
+
+                break
+
+
+    return matches
 
 
 # ============================================================
@@ -337,18 +456,12 @@ def fetch_alpha_vantage(
     api_name = "Alpha Vantage"
 
 
-    # --------------------------------------------------------
-    # Already disabled during this run
-    # --------------------------------------------------------
-
-    if not api_enabled[api_name]:
+    if not api_enabled[
+        api_name
+    ]:
 
         return []
 
-
-    # --------------------------------------------------------
-    # API key check
-    # --------------------------------------------------------
 
     if not ALPHA_VANTAGE_KEY:
 
@@ -404,10 +517,6 @@ def fetch_alpha_vantage(
         data = response.json()
 
 
-        # ----------------------------------------------------
-        # LIMIT DETECTION
-        # ----------------------------------------------------
-
         if response_is_limit(
             response,
             data
@@ -429,10 +538,6 @@ def fetch_alpha_vantage(
 
             return []
 
-
-        # ----------------------------------------------------
-        # Extract feed
-        # ----------------------------------------------------
 
         feed = data.get(
             "feed",
@@ -521,7 +626,9 @@ def fetch_alpha_vantage(
 
         api_article_counts[
             api_name
-        ] += len(articles)
+        ] += len(
+            articles
+        )
 
 
         return articles
@@ -550,7 +657,9 @@ def fetch_finnhub(
     api_name = "Finnhub"
 
 
-    if not api_enabled[api_name]:
+    if not api_enabled[
+        api_name
+    ]:
 
         return []
 
@@ -602,10 +711,6 @@ def fetch_finnhub(
 
         data = response.json()
 
-
-        # ----------------------------------------------------
-        # LIMIT DETECTION
-        # ----------------------------------------------------
 
         if response_is_limit(
             response,
@@ -674,41 +779,6 @@ def fetch_finnhub(
                     published_at = None
 
 
-            # ------------------------------------------------
-            # Check actual article time
-            # ------------------------------------------------
-
-            if published_at:
-
-                try:
-
-                    article_time = (
-                        datetime.fromisoformat(
-                            published_at
-                        )
-                    )
-
-
-                    if (
-
-                        article_time
-                        < start_time
-
-                        or
-
-                        article_time
-                        > end_time
-
-                    ):
-
-                        continue
-
-
-                except ValueError:
-
-                    pass
-
-
             articles.append({
 
                 "source_api":
@@ -745,7 +815,9 @@ def fetch_finnhub(
 
         api_article_counts[
             api_name
-        ] += len(articles)
+        ] += len(
+            articles
+        )
 
 
         return articles
@@ -774,7 +846,9 @@ def fetch_marketaux(
     api_name = "Marketaux"
 
 
-    if not api_enabled[api_name]:
+    if not api_enabled[
+        api_name
+    ]:
 
         return []
 
@@ -800,10 +874,14 @@ def fetch_marketaux(
             symbol,
 
         "published_after":
-            start_time.isoformat(),
+            start_time.strftime(
+                "%Y-%m-%dT%H:%M"
+            ),
 
         "published_before":
-            end_time.isoformat(),
+            end_time.strftime(
+                "%Y-%m-%dT%H:%M"
+            ),
 
         "language":
             "en",
@@ -812,7 +890,7 @@ def fetch_marketaux(
             "true",
 
         "limit":
-            100,
+            3,
 
         "api_token":
             MARKETAUX_KEY,
@@ -831,10 +909,6 @@ def fetch_marketaux(
 
         data = response.json()
 
-
-        # ----------------------------------------------------
-        # LIMIT DETECTION
-        # ----------------------------------------------------
 
         if response_is_limit(
             response,
@@ -915,7 +989,9 @@ def fetch_marketaux(
 
         api_article_counts[
             api_name
-        ] += len(articles)
+        ] += len(
+            articles
+        )
 
 
         return articles
@@ -925,6 +1001,246 @@ def fetch_marketaux(
 
         print(
             f"Marketaux ERROR: "
+            f"{error}"
+        )
+
+        return []
+
+
+# ============================================================
+# YFINANCE
+# ============================================================
+
+def fetch_yfinance(
+    symbol,
+    start_time,
+    end_time
+):
+
+    api_name = "yfinance"
+
+
+    if not api_enabled[
+        api_name
+    ]:
+
+        return []
+
+
+    try:
+
+        ticker = yf.Ticker(
+            symbol
+        )
+
+
+        news = ticker.news
+
+
+        if not isinstance(
+            news,
+            list
+        ):
+
+            return []
+
+
+        articles = []
+
+
+        for item in news:
+
+            content = item.get(
+                "content",
+                {}
+            )
+
+
+            if not isinstance(
+                content,
+                dict
+            ):
+
+                continue
+
+
+            published_at = None
+
+
+            raw_time = content.get(
+                "pubDate"
+            )
+
+
+            if raw_time:
+
+                try:
+
+                    published_at = (
+
+                        datetime.fromisoformat(
+                            raw_time.replace(
+                                "Z",
+                                "+00:00"
+                            )
+                        )
+
+                        .astimezone(
+                            timezone.utc
+                        )
+
+                        .isoformat()
+
+                    )
+
+                except ValueError:
+
+                    published_at = None
+
+
+            if published_at:
+
+                try:
+
+                    article_time = (
+                        datetime.fromisoformat(
+                            published_at
+                        )
+                    )
+
+
+                    if (
+                        article_time
+                        < start_time
+                        or
+                        article_time
+                        > end_time
+                    ):
+
+                        continue
+
+
+                except ValueError:
+
+                    pass
+
+
+            provider = content.get(
+                "provider",
+                {}
+            )
+
+
+            canonical_url = content.get(
+                "canonicalUrl",
+                {}
+            )
+
+
+            click_url = content.get(
+                "clickThroughUrl",
+                {}
+            )
+
+
+            if not isinstance(
+                provider,
+                dict
+            ):
+
+                provider = {}
+
+
+            if not isinstance(
+                canonical_url,
+                dict
+            ):
+
+                canonical_url = {}
+
+
+            if not isinstance(
+                click_url,
+                dict
+            ):
+
+                click_url = {}
+
+
+            article_url = (
+
+                canonical_url.get(
+                    "url"
+                )
+
+                or
+
+                click_url.get(
+                    "url"
+                )
+
+            )
+
+
+            if not article_url:
+
+                continue
+
+
+            articles.append({
+
+                "source_api":
+                    api_name,
+
+                "symbol":
+                    symbol,
+
+                "title":
+                    content.get(
+                        "title"
+                    ),
+
+                "description":
+                    (
+                        content.get(
+                            "summary"
+                        )
+
+                        or
+
+                        content.get(
+                            "description"
+                        )
+                    ),
+
+                "source":
+                    provider.get(
+                        "displayName"
+                    ),
+
+                "url":
+                    article_url,
+
+                "published_at":
+                    published_at,
+
+            })
+
+
+        api_article_counts[
+            api_name
+        ] += len(
+            articles
+        )
+
+
+        return articles
+
+
+    except Exception as error:
+
+        print(
+            f"yfinance ERROR: "
             f"{error}"
         )
 
@@ -1004,7 +1320,7 @@ def load_stock_map():
 
 
 # ============================================================
-# CHECK EXISTING URLS IN SUPABASE
+# EXISTING URLS
 # ============================================================
 
 def get_existing_urls(
@@ -1086,16 +1402,12 @@ def get_existing_urls(
 
 
 # ============================================================
-# REMOVE DUPLICATES
+# DEDUPLICATION
 # ============================================================
 
 def remove_duplicates(
     articles
 ):
-
-    # --------------------------------------------------------
-    # Remove articles without URL
-    # --------------------------------------------------------
 
     valid_articles = [
 
@@ -1107,12 +1419,12 @@ def remove_duplicates(
             "url"
         )
 
+        and article.get(
+            "title"
+        )
+
     ]
 
-
-    # --------------------------------------------------------
-    # Remove duplicate URLs from current fetch
-    # --------------------------------------------------------
 
     unique_articles = {}
 
@@ -1137,27 +1449,18 @@ def remove_duplicates(
 
 
     print(
-        f"Unique in current fetch: "
+        f"Unique articles from "
+        f"current fetch: "
         f"{len(unique_articles)}"
     )
 
 
-    # --------------------------------------------------------
-    # Check Supabase
-    # --------------------------------------------------------
-
-    urls = [
-
-        article["url"]
-
-        for article in unique_articles
-
-    ]
-
-
     existing_urls = (
         get_existing_urls(
-            urls
+            [
+                article["url"]
+                for article in unique_articles
+            ]
         )
     )
 
@@ -1167,10 +1470,6 @@ def remove_duplicates(
         f"{len(existing_urls)}"
     )
 
-
-    # --------------------------------------------------------
-    # Only new articles
-    # --------------------------------------------------------
 
     new_articles = [
 
@@ -1185,7 +1484,7 @@ def remove_duplicates(
 
 
     print(
-        f"New articles: "
+        f"New article URLs: "
         f"{len(new_articles)}"
     )
 
@@ -1194,7 +1493,90 @@ def remove_duplicates(
 
 
 # ============================================================
-# STORE RAW NEWS IN SUPABASE
+# ASSIGN STOCK
+# ============================================================
+
+def assign_stocks_to_articles(
+    articles
+):
+
+    assigned = []
+
+    unmatched = 0
+
+
+    for article in articles:
+
+        matches = (
+            find_related_stocks(
+                article
+            )
+        )
+
+
+        if not matches:
+
+            original_symbol = article.get(
+                "symbol"
+            )
+
+
+            if original_symbol:
+
+                matches = [
+                    original_symbol
+                ]
+
+
+            else:
+
+                unmatched += 1
+
+                continue
+
+
+        article_copy = dict(
+            article
+        )
+
+
+        # Current Supabase schema has one
+        # stock_id/symbol per news_articles row.
+        #
+        # Therefore we use the first detected
+        # stock for now.
+        #
+        # Later we can migrate to a many-to-many
+        # news_articles/news_stock_relations design.
+
+        article_copy[
+            "symbol"
+        ] = matches[0]
+
+
+        assigned.append(
+            article_copy
+        )
+
+
+    print(
+        f"Articles without "
+        f"stock match: "
+        f"{unmatched}"
+    )
+
+
+    print(
+        f"Stock-associated articles: "
+        f"{len(assigned)}"
+    )
+
+
+    return assigned
+
+
+# ============================================================
+# STORE NEWS
 # ============================================================
 
 def store_news(
@@ -1212,9 +1594,9 @@ def store_news(
 
     for article in articles:
 
-        symbol = article[
+        symbol = article.get(
             "symbol"
-        ]
+        )
 
 
         stock_id = stock_map.get(
@@ -1223,11 +1605,6 @@ def store_news(
 
 
         if stock_id is None:
-
-            print(
-                f"Skipping {symbol}: "
-                "stock not found"
-            )
 
             continue
 
@@ -1278,10 +1655,6 @@ def store_news(
 
     inserted = 0
 
-
-    # --------------------------------------------------------
-    # Insert in batches
-    # --------------------------------------------------------
 
     for start in range(
 
@@ -1356,67 +1729,66 @@ def store_news(
 
 
 # ============================================================
-# PROCESS ONE STOCK
+# FETCH ALL NEWS
 # ============================================================
 
-def process_stock(
-
-    symbol,
-
-    stock_map,
-
+def fetch_all_news(
     start_time,
-
     end_time
-
 ):
-
-    print("\n" + "=" * 60)
-
-    print(
-        f"{symbol} | NASDAQ"
-    )
-
-    print("=" * 60)
-
 
     all_articles = []
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # ALPHA VANTAGE
-    # ========================================================
+    # --------------------------------------------------------
+
+    print(
+        "\nFetching Alpha Vantage..."
+    )
+
 
     if api_enabled[
         "Alpha Vantage"
     ]:
 
-        articles = (
+        for symbol in STOCK_SYMBOLS:
 
-            fetch_alpha_vantage(
+            try:
 
-                symbol,
-
-                start_time,
-
-                end_time
-
-            )
-
-        )
+                articles = (
+                    fetch_alpha_vantage(
+                        symbol,
+                        start_time,
+                        end_time
+                    )
+                )
 
 
-        print(
+                print(
 
-            f"Alpha Vantage: "
-            f"{len(articles)} articles"
+                    f"Alpha Vantage | "
+                    f"{symbol}: "
+                    f"{len(articles)}"
 
-        )
+                )
 
 
-        all_articles.extend(
-            articles
-        )
+                all_articles.extend(
+                    articles
+                )
+
+
+            except Exception as error:
+
+                print(
+
+                    f"Alpha Vantage "
+                    f"{symbol} ERROR: "
+                    f"{error}"
+
+                )
 
 
     else:
@@ -1426,40 +1798,55 @@ def process_stock(
         )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # FINNHUB
-    # ========================================================
+    # --------------------------------------------------------
+
+    print(
+        "\nFetching Finnhub..."
+    )
+
 
     if api_enabled[
         "Finnhub"
     ]:
 
-        articles = (
+        for symbol in STOCK_SYMBOLS:
 
-            fetch_finnhub(
+            try:
 
-                symbol,
-
-                start_time,
-
-                end_time
-
-            )
-
-        )
+                articles = (
+                    fetch_finnhub(
+                        symbol,
+                        start_time,
+                        end_time
+                    )
+                )
 
 
-        print(
+                print(
 
-            f"Finnhub: "
-            f"{len(articles)} articles"
+                    f"Finnhub | "
+                    f"{symbol}: "
+                    f"{len(articles)}"
 
-        )
+                )
 
 
-        all_articles.extend(
-            articles
-        )
+                all_articles.extend(
+                    articles
+                )
+
+
+            except Exception as error:
+
+                print(
+
+                    f"Finnhub "
+                    f"{symbol} ERROR: "
+                    f"{error}"
+
+                )
 
 
     else:
@@ -1469,40 +1856,55 @@ def process_stock(
         )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # MARKETAUX
-    # ========================================================
+    # --------------------------------------------------------
+
+    print(
+        "\nFetching Marketaux..."
+    )
+
 
     if api_enabled[
         "Marketaux"
     ]:
 
-        articles = (
+        for symbol in STOCK_SYMBOLS:
 
-            fetch_marketaux(
+            try:
 
-                symbol,
-
-                start_time,
-
-                end_time
-
-            )
-
-        )
+                articles = (
+                    fetch_marketaux(
+                        symbol,
+                        start_time,
+                        end_time
+                    )
+                )
 
 
-        print(
+                print(
 
-            f"Marketaux: "
-            f"{len(articles)} articles"
+                    f"Marketaux | "
+                    f"{symbol}: "
+                    f"{len(articles)}"
 
-        )
+                )
 
 
-        all_articles.extend(
-            articles
-        )
+                all_articles.extend(
+                    articles
+                )
+
+
+            except Exception as error:
+
+                print(
+
+                    f"Marketaux "
+                    f"{symbol} ERROR: "
+                    f"{error}"
+
+                )
 
 
     else:
@@ -1512,39 +1914,71 @@ def process_stock(
         )
 
 
-    # ========================================================
-    # DEDUPLICATION
-    # ========================================================
+    # --------------------------------------------------------
+    # YFINANCE
+    # --------------------------------------------------------
 
-    new_articles = (
-        remove_duplicates(
-            all_articles
+    print(
+        "\nFetching yfinance..."
+    )
+
+
+    if api_enabled[
+        "yfinance"
+    ]:
+
+        for symbol in STOCK_SYMBOLS:
+
+            try:
+
+                articles = (
+                    fetch_yfinance(
+                        symbol,
+                        start_time,
+                        end_time
+                    )
+                )
+
+
+                print(
+
+                    f"yfinance | "
+                    f"{symbol}: "
+                    f"{len(articles)}"
+
+                )
+
+
+                all_articles.extend(
+                    articles
+                )
+
+
+            except Exception as error:
+
+                print(
+
+                    f"yfinance "
+                    f"{symbol} ERROR: "
+                    f"{error}"
+
+                )
+
+
+    else:
+
+        print(
+            "yfinance: SKIPPED"
         )
-    )
-
-
-    # ========================================================
-    # STORE
-    # ========================================================
-
-    inserted = store_news(
-
-        new_articles,
-
-        stock_map
-
-    )
 
 
     print(
-
-        f"New articles added: "
-        f"{inserted}"
-
+        "\nTotal raw articles fetched: "
+        f"{len(all_articles)}"
     )
 
 
-    return inserted
+    return all_articles
 
 
 # ============================================================
@@ -1558,18 +1992,18 @@ def main():
     print("=" * 60)
 
     print(
-        "HOURLY RAW NEWS COLLECTOR"
+        "FINANCIAL NEWS COLLECTOR"
     )
 
     print("=" * 60)
 
 
-    # ========================================================
-    # SHOW ENVIRONMENT
-    # ========================================================
+    # --------------------------------------------------------
+    # ENVIRONMENT
+    # --------------------------------------------------------
 
     print(
-        f"\n.env file:"
+        "\n.env file:"
     )
 
     print(
@@ -1632,9 +2066,9 @@ def main():
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # TIME WINDOW
-    # ========================================================
+    # --------------------------------------------------------
 
     start_time, end_time = (
         get_time_window()
@@ -1648,109 +2082,200 @@ def main():
 
     print(
 
-        start_time.isoformat()
-
-        + " → "
-
-        + end_time.isoformat()
+        f"{start_time.isoformat()} "
+        f"-> "
+        f"{end_time.isoformat()}"
 
     )
 
 
     print(
 
-        f"\nStocks: "
+        f"\nStocks configured: "
         f"{len(STOCK_SYMBOLS)}"
 
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # LOAD STOCKS
-    # ========================================================
+    # --------------------------------------------------------
 
     stock_map = (
         load_stock_map()
     )
 
 
-    # ========================================================
-    # PROCESS STOCKS
-    # ========================================================
-
-    total_new = 0
-
-
-    for symbol in STOCK_SYMBOLS:
-
-        try:
-
-            inserted = process_stock(
-
-                symbol,
-
-                stock_map,
-
-                start_time,
-
-                end_time
-
-            )
-
-
-            total_new += inserted
-
-
-        except Exception as error:
-
-            print("\n")
-
-            print(
-                f"{symbol} FAILED"
-            )
-
-
-            print(
-                error
-            )
-
-
-            print(
-
-                "Continuing with "
-                "remaining stocks..."
-
-            )
-
-
-    # ========================================================
-    # FINAL REPORT
-    # ========================================================
-
-    print("\n")
-
-    print("=" * 60)
+    # --------------------------------------------------------
+    # FETCH
+    # --------------------------------------------------------
 
     print(
-        "HOURLY COLLECTION COMPLETE"
+        "\n"
+        + "=" * 60
     )
 
-    print("=" * 60)
+
+    print(
+        "FETCHING FINANCIAL NEWS"
+    )
+
+
+    print(
+        "=" * 60
+    )
+
+
+    all_articles = (
+        fetch_all_news(
+            start_time,
+            end_time
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # DEDUPLICATION
+    # --------------------------------------------------------
+
+    print(
+        "\n"
+        + "=" * 60
+    )
+
+
+    print(
+        "DEDUPLICATION"
+    )
+
+
+    print(
+        "=" * 60
+    )
+
+
+    new_articles = (
+        remove_duplicates(
+            all_articles
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # STOCK ASSOCIATION
+    # --------------------------------------------------------
+
+    print(
+        "\n"
+        + "=" * 60
+    )
+
+
+    print(
+        "STOCK ASSOCIATION"
+    )
+
+
+    print(
+        "=" * 60
+    )
+
+
+    assigned_articles = (
+        assign_stocks_to_articles(
+            new_articles
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # STORE
+    # --------------------------------------------------------
+
+    print(
+        "\n"
+        + "=" * 60
+    )
+
+
+    print(
+        "SUPABASE STORAGE"
+    )
+
+
+    print(
+        "=" * 60
+    )
+
+
+    total_new = store_news(
+
+        assigned_articles,
+
+        stock_map
+
+    )
+
+
+    # --------------------------------------------------------
+    # FINAL REPORT
+    # --------------------------------------------------------
+
+    print(
+        "\n"
+        + "=" * 60
+    )
+
+
+    print(
+        "COLLECTION COMPLETE"
+    )
+
+
+    print(
+        "=" * 60
+    )
 
 
     print(
 
-        f"Total new articles: "
+        f"Raw articles fetched: "
+        f"{len(all_articles)}"
+
+    )
+
+
+    print(
+
+        f"New unique article URLs: "
+        f"{len(new_articles)}"
+
+    )
+
+
+    print(
+
+        f"Stock-associated articles: "
+        f"{len(assigned_articles)}"
+
+    )
+
+
+    print(
+
+        f"New database rows: "
         f"{total_new}"
 
     )
 
 
-    # ========================================================
+    # --------------------------------------------------------
     # API TOTALS
-    # ========================================================
+    # --------------------------------------------------------
 
-    print("\nAPI ARTICLE COUNTS")
+    print(
+        "\nAPI ARTICLE COUNTS"
+    )
 
 
     for api_name in (
@@ -1760,6 +2285,8 @@ def main():
         "Finnhub",
 
         "Marketaux",
+
+        "yfinance",
 
     ):
 
@@ -1771,9 +2298,9 @@ def main():
         )
 
 
-    # ========================================================
-    # FINAL API STATUS
-    # ========================================================
+    # --------------------------------------------------------
+    # API STATUS
+    # --------------------------------------------------------
 
     print(
         "\nFINAL API STATUS"
@@ -1787,6 +2314,8 @@ def main():
         "Finnhub",
 
         "Marketaux",
+
+        "yfinance",
 
     ):
 
