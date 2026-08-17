@@ -1,0 +1,2 @@
+document.querySelectorAll('.periods button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.periods button').forEach(item=>item.classList.remove('selected'));button.classList.add('selected')}));
+document.querySelectorAll('.toggle button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.toggle button').forEach(item=>item.classList.remove('selected'));button.classList.add('selected')}));
