@@ -37,15 +37,32 @@ def dashboard():
 
 @app.get("/api/news")
 def news():
-    limit = min(max(int(os.getenv("NEWS_LIMIT", "12")), 1), 50)
-    response = (
-        supabase.table("news_articles")
-        .select("symbol,title,description,source,url,published_at,source_api")
-        .order("published_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return jsonify({"data": response.data or []})
+    requested = os.getenv("NEWS_LIMIT", "all")
+    query_limit = None if requested.lower() == "all" else min(max(int(requested), 1), 10000)
+    rows = []
+    start = 0
+    page_size = 1000
+
+    while True:
+        end = start + page_size - 1
+        response = (
+            supabase.table("news_articles")
+            .select("symbol,title,description,source,url,published_at,source_api")
+            .order("published_at", desc=True)
+            .range(start, end)
+            .execute()
+        )
+        page = response.data or []
+        rows.extend(page)
+
+        if not page or len(page) < page_size or (query_limit and len(rows) >= query_limit):
+            break
+        start += page_size
+
+    if query_limit:
+        rows = rows[:query_limit]
+
+    return jsonify({"data": rows, "count": len(rows)})
 
 
 if __name__ == "__main__":
