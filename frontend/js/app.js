@@ -25,12 +25,10 @@ function createNewsItem(article){
   item.querySelector('h3').textContent=article.title||'Untitled financial news';
   const image=item.querySelector('img');
   if(article.image_url){
-    image.src=article.image_url;
+    image.src=`/api/news-image?url=${encodeURIComponent(article.image_url)}`;
     image.alt=article.source||'Financial news';
     image.addEventListener('error',()=>image.remove());
-  }else{
-    image.remove();
-  }
+  }else image.remove();
   if(article.url){item.classList.add('clickable');item.addEventListener('click',()=>window.open(article.url,'_blank','noopener,noreferrer'));}
   return item;
 }
