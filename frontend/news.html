@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/news.css">
 </head>
 <body class="dashboard-page">
   <aside class="sidebar">
@@ -25,77 +26,29 @@
     <header class="dash-top">
       <a class="brand" href="index.html">BullInsights</a>
       <div class="dash-links">
-        <a href="dashboard.html">Dashboard</a>
-        <a href="#">Stocks</a>
-        <a href="#">Mutual Funds</a>
-        <a class="active-link" href="news.html">News</a>
+        <a href="dashboard.html">Dashboard</a><a href="#">Stocks</a><a href="#">Mutual Funds</a><a class="active-link" href="news.html">News</a>
       </div>
-      <div class="actions">
-        <button class="icon-btn"><span class="material-symbols-outlined">search</span></button>
-        <button class="icon-btn"><span class="material-symbols-outlined">notifications</span></button>
-        <button class="icon-btn"><span class="material-symbols-outlined">account_circle</span></button>
-      </div>
+      <div class="actions"><button class="icon-btn"><span class="material-symbols-outlined">search</span></button><button class="icon-btn"><span class="material-symbols-outlined">notifications</span></button><button class="icon-btn"><span class="material-symbols-outlined">account_circle</span></button></div>
     </header>
     <main class="dash-content container news-page-content">
-      <div class="overview-head">
-        <div>
-          <h1>Latest Financial News</h1>
-          <p>Market and company news collected from your Supabase database.</p>
-        </div>
-        <button class="btn secondary" data-news-refresh>Refresh</button>
-      </div>
+      <div class="overview-head"><div><h1>Latest Financial News</h1><p>Market and company news collected from your Supabase database.</p></div><button class="btn secondary" data-news-refresh>Refresh</button></div>
       <section class="card news-full-card">
-        <div class="news-page-head">
-          <div><strong data-news-page>Page 1</strong><small class="news-status">Loading news...</small></div>
-          <span>100 articles per page</span>
-        </div>
+        <div class="news-page-head"><div><strong data-news-page>Page 1</strong><small class="news-status">Loading news...</small></div><span>100 articles per page</span></div>
         <div class="news-list news-full-list"></div>
-        <div class="news-pagination">
-          <button class="btn secondary" data-news-prev>← Previous</button>
-          <div class="news-page-buttons" data-news-pages></div>
-          <button class="btn secondary" data-news-next>Next →</button>
-        </div>
+        <div class="news-pagination"><button class="btn secondary" data-news-prev>← Previous</button><div class="news-page-buttons" data-news-pages></div><button class="btn secondary" data-news-next>Next →</button></div>
       </section>
-      <footer class="footer dash-footer">
-        <div><strong>BullInsights</strong><small>© 2026 Stock Price Predictor.</small></div>
-        <div class="footer-links"><a href="#">Company</a><a href="#">Help Center</a><a href="#">Privacy</a><a href="#">Terms</a></div>
-      </footer>
+      <footer class="footer dash-footer"><div><strong>BullInsights</strong><small>© 2026 Stock Price Predictor.</small></div><div class="footer-links"><a href="#">Company</a><a href="#">Help Center</a><a href="#">Privacy</a><a href="#">Terms</a></div></footer>
     </main>
   </div>
   <script>
     document.addEventListener('DOMContentLoaded',()=>{
-      const list=document.querySelector('.news-full-list');
-      const status=document.querySelector('.news-status');
-      const pageLabel=document.querySelector('[data-news-page]');
-      const prev=document.querySelector('[data-news-prev]');
-      const next=document.querySelector('[data-news-next]');
-      const pages=document.querySelector('[data-news-pages]');
-      const refresh=document.querySelector('[data-news-refresh]');
-      const limit=100;
-      let current=1;
-      let hasNext=false;
+      const list=document.querySelector('.news-full-list'),status=document.querySelector('.news-status'),pageLabel=document.querySelector('[data-news-page]'),prev=document.querySelector('[data-news-prev]'),next=document.querySelector('[data-news-next]'),pages=document.querySelector('[data-news-pages]'),refresh=document.querySelector('[data-news-refresh]');
+      const limit=100;let current=1,hasNext=false;
       const time=value=>{if(!value)return 'Time unavailable';const d=new Date(value);if(Number.isNaN(d.getTime()))return 'Time unavailable';const m=Math.max(0,Math.floor((Date.now()-d.getTime())/60000));if(m<1)return 'Just now';if(m<60)return `${m} min ago`;const h=Math.floor(m/60);if(h<24)return `${h} hr ago`;return `${Math.floor(h/24)} days ago`;};
-      function item(article){
-        const el=document.createElement('article');el.className='news-item';
-        el.innerHTML='<div class="news-image"><img loading="lazy"></div><div class="news-copy"><small></small><h3></h3><p></p><div class="news-meta"></div></div>';
-        el.querySelector('small').textContent=`${time(article.published_at)} • ${article.source||article.source_api||'Financial News'}`;
-        el.querySelector('h3').textContent=article.title||'Untitled financial news';
-        el.querySelector('p').textContent=article.description||'';
-        el.querySelector('.news-meta').textContent=article.symbol||'';
-        const img=el.querySelector('img');
-        if(article.image_url){img.src=article.image_url;img.alt=article.source||'Financial news';img.addEventListener('error',()=>{img.remove();});}else{img.remove();}
-        if(article.url){el.classList.add('clickable');el.addEventListener('click',()=>window.open(article.url,'_blank','noopener,noreferrer'));}
-        return el;
-      }
-      function render(){
-        pageLabel.textContent=`Page ${current}`;prev.disabled=current===1;next.disabled=!hasNext;pages.innerHTML='';
-        const start=Math.max(1,current-2),end=current+2;
-        for(let p=start;p<=end;p++){const b=document.createElement('button');b.textContent=p;b.className=p===current?'selected':'';b.addEventListener('click',()=>load(p));pages.appendChild(b);}
-      }
-      async function load(page=1){
-        current=page;status.textContent='Loading news...';list.innerHTML='<div class="news-empty">Loading financial news...</div>';
-        try{const r=await fetch(`/api/news?page=${page}&limit=${limit}`);if(!r.ok)throw new Error(`HTTP ${r.status}`);const payload=await r.json();const articles=payload.data||[];hasNext=Boolean(payload.has_next);list.innerHTML='';if(!articles.length)list.innerHTML='<div class="news-empty">No news available.</div>';articles.forEach(a=>list.appendChild(item(a)));status.textContent=articles.length?`${articles.length} stories on this page`:'No news available';render();window.scrollTo({top:0,behavior:'smooth'});}catch(error){console.error(error);list.innerHTML='<div class="news-empty">Unable to load news. Make sure the Flask API is running.</div>';status.textContent='News unavailable';}}
-      prev.addEventListener('click',()=>{if(current>1)load(current-1);});next.addEventListener('click',()=>{if(hasNext)load(current+1);});refresh.addEventListener('click',()=>load(current));load();
+      function item(article){const el=document.createElement('article');el.className='news-item';el.innerHTML='<div class="news-image"><img loading="lazy"></div><div class="news-copy"><small></small><h3></h3><p></p><div class="news-meta"></div></div>';el.querySelector('small').textContent=`${time(article.published_at)} • ${article.source||article.source_api||'Financial News'}`;el.querySelector('h3').textContent=article.title||'Untitled financial news';el.querySelector('p').textContent=article.description||'';el.querySelector('.news-meta').textContent=article.symbol||'';const img=el.querySelector('img');if(article.image_url){img.src=article.image_url;img.alt=article.source||'Financial news';img.addEventListener('error',()=>img.remove());}else img.remove();if(article.url){el.classList.add('clickable');el.addEventListener('click',()=>window.open(article.url,'_blank','noopener,noreferrer'));}return el;}
+      function render(){pageLabel.textContent=`Page ${current}`;prev.disabled=current===1;next.disabled=!hasNext;pages.innerHTML='';const start=Math.max(1,current-2),end=current+2;for(let p=start;p<=end;p++){const b=document.createElement('button');b.textContent=p;b.className=p===current?'selected':'';b.addEventListener('click',()=>load(p));pages.appendChild(b);}}
+      async function load(page=1){current=page;status.textContent='Loading news...';list.innerHTML='<div class="news-empty">Loading financial news...</div>';try{const r=await fetch(`/api/news?page=${page}&limit=${limit}`);if(!r.ok)throw new Error(`HTTP ${r.status}`);const payload=await r.json(),articles=payload.data||[];hasNext=Boolean(payload.has_next);list.innerHTML='';if(!articles.length)list.innerHTML='<div class="news-empty">No news available.</div>';articles.forEach(a=>list.appendChild(item(a)));status.textContent=articles.length?`${articles.length} stories on this page`:'No news available';render();window.scrollTo({top:0,behavior:'smooth'});}catch(error){console.error(error);list.innerHTML='<div class="news-empty">Unable to load news. Make sure the Flask API is running.</div>';status.textContent='News unavailable';}}
+      prev.addEventListener('click',()=>{if(current>1)load(current-1)});next.addEventListener('click',()=>{if(hasNext)load(current+1)});refresh.addEventListener('click',()=>load(current));load();
     });
   </script>
 </body>
