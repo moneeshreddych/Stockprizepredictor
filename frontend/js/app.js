@@ -3,6 +3,7 @@ document.querySelectorAll('.toggle button').forEach(button=>button.addEventListe
 
 const newsList=document.querySelector('.news-list');
 const newsStatus=document.querySelector('.news-status');
+const newsRefresh=document.querySelector('.news-card a');
 
 function formatNewsTime(value){
   if(!value)return 'Time unavailable';
@@ -16,27 +17,36 @@ function formatNewsTime(value){
   return `${Math.floor(hours/24)} days ago`;
 }
 
+function sourceHost(url){
+  try{return new URL(url).hostname.replace(/^www\./,'');}catch{return '';}
+}
+
 function createNewsItem(article){
   const item=document.createElement('article');
   item.className='news-item';
-  item.innerHTML=`<div class="news-image"></div><div class="news-copy"><small>${formatNewsTime(article.published_at)} • ${article.source||article.source_api||'Financial News'}</small><h3></h3><div class="news-meta">${article.symbol||''}</div></div>`;
+  const host=sourceHost(article.url);
+  const imageUrl=host?`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`:'';
+  item.innerHTML=`<div class="news-image"><img src="${imageUrl}" alt="${article.source||'News'}" loading="lazy"></div><div class="news-copy"><small>${formatNewsTime(article.published_at)} • ${article.source||article.source_api||'Financial News'}</small><h3></h3><div class="news-meta">${article.symbol||''}</div></div>`;
   const title=item.querySelector('h3');
   title.textContent=article.title||'Untitled financial news';
+  const image=item.querySelector('img');
+  image.addEventListener('error',()=>{image.remove();});
   if(article.url){item.classList.add('clickable');item.addEventListener('click',()=>window.open(article.url,'_blank','noopener,noreferrer'));}
   return item;
 }
 
 async function loadNews(){
   if(!newsList)return;
-  if(newsStatus)newsStatus.textContent='Loading latest financial news...';
+  if(newsStatus)newsStatus.textContent='Loading all financial news...';
+  if(newsRefresh)newsRefresh.textContent='Refresh';
   try{
-    const response=await fetch('/api/news?limit=8');
+    const response=await fetch('/api/news?limit=all');
     if(!response.ok)throw new Error(`News API returned ${response.status}`);
     const payload=await response.json();
     const articles=Array.isArray(payload.data)?payload.data:[];
     newsList.innerHTML='';
     articles.forEach(article=>newsList.appendChild(createNewsItem(article)));
-    if(newsStatus)newsStatus.textContent=articles.length?`${articles.length} latest stories`:'No news available';
+    if(newsStatus)newsStatus.textContent=articles.length?`${articles.length} stories from Supabase`:'No news available';
   }catch(error){
     console.error('News loading failed:',error);
     newsList.innerHTML='<div class="news-empty">Unable to load news. Make sure the Flask API is running.</div>';
@@ -44,4 +54,5 @@ async function loadNews(){
   }
 }
 
+if(newsRefresh)newsRefresh.addEventListener('click',event=>{event.preventDefault();loadNews();});
 loadNews();
