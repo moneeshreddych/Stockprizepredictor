@@ -22,15 +22,6 @@ if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 app = Flask(__name__, static_folder=str(FRONTEND), static_url_path="")
 
-IMAGE_HOSTS = {
-    "s.yimg.com",
-    "media.zenfs.com",
-    "g.foolcdn.com",
-    "cdn.proactiveinvestors.com",
-    "247wallst.com",
-    "s.tradingview.com",
-}
-
 
 def allowed_image_url(value):
     try:
@@ -38,12 +29,10 @@ def allowed_image_url(value):
         if parsed.scheme != "https" or not parsed.hostname:
             return False
         host = parsed.hostname.lower().rstrip(".")
-        if host not in IMAGE_HOSTS and not any(host.endswith("." + item) for item in IMAGE_HOSTS):
-            return False
         addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
         for address in addresses:
             ip = ipaddress.ip_address(address[4][0])
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
                 return False
         return True
     except (ValueError, socket.gaierror, OSError):
@@ -89,6 +78,9 @@ def news():
         .execute()
     )
     rows = response.data or []
+    for row in rows:
+        image_url = row.get("image_url")
+        row["image_proxy_url"] = f"/api/news-image?url={requests.utils.quote(image_url, safe='')}" if image_url else None
     return jsonify({
         "data": rows,
         "page": page,
@@ -102,7 +94,7 @@ def news():
 def news_image():
     image_url = request.args.get("url", "")
     if not allowed_image_url(image_url):
-        return jsonify({"error": "Image host is not allowed"}), 400
+        return jsonify({"error": "Image URL is not allowed"}), 400
     try:
         response = requests.get(
             image_url,
