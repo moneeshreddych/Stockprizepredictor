@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from supabase import create_client
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,34 +35,40 @@ def dashboard():
     return send_from_directory(FRONTEND, "dashboard.html")
 
 
+@app.get("/news.html")
+def news_page():
+    return send_from_directory(FRONTEND, "news.html")
+
+
 @app.get("/api/news")
 def news():
-    requested = os.getenv("NEWS_LIMIT", "all")
-    query_limit = None if requested.lower() == "all" else min(max(int(requested), 1), 10000)
-    rows = []
-    start = 0
-    page_size = 1000
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+        limit = min(max(int(request.args.get("limit", 100)), 1), 100)
+    except ValueError:
+        return jsonify({"error": "page and limit must be integers"}), 400
 
-    while True:
-        end = start + page_size - 1
-        response = (
-            supabase.table("news_articles")
-            .select("symbol,title,description,source,url,published_at,source_api")
-            .order("published_at", desc=True)
-            .range(start, end)
-            .execute()
-        )
-        page = response.data or []
-        rows.extend(page)
+    start = (page - 1) * limit
+    end = start + limit - 1
 
-        if not page or len(page) < page_size or (query_limit and len(rows) >= query_limit):
-            break
-        start += page_size
+    response = (
+        supabase.table("news_articles")
+        .select("symbol,title,description,source,url,published_at,source_api,image_url")
+        .order("published_at", desc=True)
+        .range(start, end)
+        .execute()
+    )
 
-    if query_limit:
-        rows = rows[:query_limit]
+    rows = response.data or []
+    has_next = len(rows) == limit
 
-    return jsonify({"data": rows, "count": len(rows)})
+    return jsonify({
+        "data": rows,
+        "page": page,
+        "limit": limit,
+        "count": len(rows),
+        "has_next": has_next,
+    })
 
 
 if __name__ == "__main__":
