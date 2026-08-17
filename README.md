@@ -15,6 +15,5 @@ A machine learning project that predicts stock price movements by combining fina
 - FinBERT
 - Temporal Fusion Transformer (TFT)
 - Pandas
-- NumPy
 - Scikit-learn
 - Matplotlib
