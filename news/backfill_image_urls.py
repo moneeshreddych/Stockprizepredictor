@@ -96,32 +96,8 @@ def load_null_image_rows():
             .range(start, start + BATCH_SIZE - 1)
             .execute()
         )
+        
 
- while True:
-        response = (
-            supabase.table("news_articles")
-            .select("url,title")
-            .is_("image_url", "null")
-            .not_.is_("url", "null")
-            .range(start, start + BATCH_SIZE - 1)
-            .execute()
-        ) while True:
-        response = (
-            supabase.table("news_articles")
-            .select("url,title")
-            .is_("image_url", "null")
-            .not_.is_("url", "null")
-            .range(start, start + BATCH_SIZE - 1)
-            .execute()
-        ) while True:
-        response = (
-            supabase.table("news_articles")
-            .select("url,title")
-            .is_("image_url", "null")
-            .not_.is_("url", "null")
-            .range(start, start + BATCH_SIZE - 1)
-            .execute()
-        )
         batch = response.data or []
         rows.extend(batch)
 
