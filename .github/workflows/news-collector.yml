@@ -25,4 +25,5 @@ jobs:
             -e ALPHA_VANTAGE_API_KEY="${{ secrets.ALPHA_VANTAGE_API_KEY }}" \
             -e FINNHUB_API_KEY="${{ secrets.FINNHUB_API_KEY }}" \
             -e MARKETAUX_API_KEY="${{ secrets.MARKETAUX_API_KEY }}" \
-            stockprice-news
+            stockprice-news \
+            python -m news.news_collector
