@@ -1,4 +1,8 @@
 python-dotenv>=1.0.0
 requests>=2.31.0
+pandas>=2.0.0
+yfinance>=0.2.0
 supabase
-yfinance>=1.5.2
+torch
+transformers
+Flask>=3.0.0

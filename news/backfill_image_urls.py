@@ -1,8 +1,12 @@
 import os
+import sys
 import time
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 import requests
 from dotenv import load_dotenv
@@ -93,6 +97,7 @@ def load_null_image_rows():
             .select("url,title")
             .is_("image_url", "null")
             .not_.is_("url", "null")
+            .order("published_at", desc=True)
             .range(start, start + BATCH_SIZE - 1)
             .execute()
         )
@@ -127,7 +132,8 @@ def main():
         article_url = row.get("url")
         title = row.get("title") or "Untitled"
 
-        print(f"[{index}/{len(rows)}] {title[:90]}")
+        safe_title = title[:90].encode("ascii", errors="replace").decode("ascii")
+        print(f"[{index}/{len(rows)}] {safe_title}")
 
         image_url = extract_image_url(article_url)
 

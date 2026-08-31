@@ -2,7 +2,7 @@ import ipaddress
 import os
 import socket
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 import requests
 from dotenv import load_dotenv
@@ -60,6 +60,31 @@ def news_page():
     return send_from_directory(FRONTEND, "news.html")
 
 
+STOCK_FALLBACK_IMAGES = {
+    "NVDA": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
+    "AAPL": "https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?w=600&auto=format&fit=crop&q=80",
+    "MSFT": "https://images.unsplash.com/photo-1633419461186-7d40a38105ec?w=600&auto=format&fit=crop&q=80",
+    "AMZN": "https://images.unsplash.com/photo-1523474253046-8cd2748b5fd2?w=600&auto=format&fit=crop&q=80",
+    "GOOGL": "https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?w=600&auto=format&fit=crop&q=80",
+    "GOOG": "https://images.unsplash.com/photo-1573804633927-bfcbcd909acd?w=600&auto=format&fit=crop&q=80",
+    "META": "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80",
+    "AVGO": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
+    "TSLA": "https://images.unsplash.com/photo-1563720223185-11003d516935?w=600&auto=format&fit=crop&q=80",
+    "WMT": "https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=600&auto=format&fit=crop&q=80",
+    "COST": "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&auto=format&fit=crop&q=80",
+    "NFLX": "https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=600&auto=format&fit=crop&q=80",
+    "AMD": "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&auto=format&fit=crop&q=80",
+    "CSCO": "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=600&auto=format&fit=crop&q=80",
+    "ADBE": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80",
+    "QCOM": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
+    "INTC": "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&auto=format&fit=crop&q=80",
+    "AMAT": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
+    "INTU": "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80",
+    "TXN": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
+}
+DEFAULT_STOCK_IMAGE = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&auto=format&fit=crop&q=80"
+
+
 @app.get("/api/news")
 def news():
     try:
@@ -80,7 +105,11 @@ def news():
     rows = response.data or []
     for row in rows:
         image_url = row.get("image_url")
-        row["image_proxy_url"] = f"/api/news-image?url={requests.utils.quote(image_url, safe='')}" if image_url else None
+        symbol = row.get("symbol")
+        if not image_url:
+            image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
+            row["image_url"] = image_url
+        row["image_proxy_url"] = f"/api/news-image?url={quote(image_url, safe=':/?#[]@!$&\'()*+,;=')}"
     return jsonify({
         "data": rows,
         "page": page,
@@ -96,10 +125,14 @@ def news_image():
     if not allowed_image_url(image_url):
         return jsonify({"error": "Image URL is not allowed"}), 400
     try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        }
         response = requests.get(
             image_url,
             timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"},
+            headers=headers,
             allow_redirects=True,
         )
         response.raise_for_status()
