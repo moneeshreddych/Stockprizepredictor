@@ -46,6 +46,12 @@ function renderNewsArticle(article) {
   ].filter(Boolean);
   let sourceIndex = 0;
 
+  // Keep the image element rendered while it loads. Hiding a lazy-loaded
+  // <img> with display:none can prevent the browser from starting the
+  // request, so neither onload nor onerror fires and the fallback stays visible.
+  img.style.display = "block";
+  if (fallback) fallback.style.display = "none";
+
   const showFallback = () => {
     img.style.display = "none";
     if (fallback) fallback.style.display = "flex";
@@ -57,7 +63,7 @@ function renderNewsArticle(article) {
       return;
     }
     const source = sources[sourceIndex++];
-    img.style.display = "none";
+    img.style.display = "block";
     img.src = source;
   };
 
