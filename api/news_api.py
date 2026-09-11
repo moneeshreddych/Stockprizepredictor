@@ -7,6 +7,7 @@ from urllib.parse import urlparse, quote
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, Response, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from supabase import create_client
 import yfinance as yf
 import sys
@@ -25,6 +26,9 @@ if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 app = Flask(__name__, static_folder=str(FRONTEND), static_url_path="")
+# Render terminates HTTPS at its proxy. Trust the forwarded scheme/host so
+# externally generated URLs (including news image proxy URLs) stay HTTPS.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 def allowed_image_url(value):
