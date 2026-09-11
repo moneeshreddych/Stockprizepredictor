@@ -27,35 +27,45 @@ let candleSeries = null;
 let volumeSeries = null;
 let chartResizeObserver = null;
 
-const COMPANY_NAMES = { AAPL:'Apple Inc.', MSFT:'Microsoft Corp.', NVDA:'NVIDIA Corp.', AMZN:'Amazon.com Inc.', GOOGL:'Alphabet Inc.', GOOG:'Alphabet Inc.', META:'Meta Platforms Inc.', TSLA:'Tesla Inc.', AVGO:'Broadcom Inc.', AMD:'Advanced Micro Devices', NFLX:'Netflix Inc.', COST:'Costco Wholesale', WMT:'Walmart Inc.', CSCO:'Cisco Systems', ADBE:'Adobe Inc.', QCOM:'Qualcomm Inc.', INTC:'Intel Corp.', AMAT:'Applied Materials', INTU:'Intuit Inc.', TXN:'Texas Instruments' };
-function formatMoney(value) { const number = Number(value); return Number.isFinite(number) ? `$${number.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'; }
+const STOCK_SYMBOLS = ['NVDA','AAPL','MSFT','AMZN','GOOGL','GOOG','META','AVGO','TSLA','WMT','COST','NFLX','AMD','CSCO','ADBE','QCOM','INTC','AMAT','INTU','TXN'];
+const COMPANY_NAMES = { NVDA:'NVIDIA', AAPL:'Apple', MSFT:'Microsoft', AMZN:'Amazon', GOOGL:'Alphabet Class A', GOOG:'Alphabet Class C', META:'Meta Platforms', AVGO:'Broadcom', TSLA:'Tesla', WMT:'Walmart', COST:'Costco Wholesale', NFLX:'Netflix', AMD:'Advanced Micro Devices', CSCO:'Cisco Systems', ADBE:'Adobe', QCOM:'Qualcomm', INTC:'Intel', AMAT:'Applied Materials', INTU:'Intuit', TXN:'Texas Instruments' };
+
+function formatMoney(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `$${number.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+}
 function formatTime() { return new Intl.DateTimeFormat('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date()); }
+function hasLiveQuote(stock) { return Number.isFinite(Number(stock?.price)); }
 
 function setSelectedStock(stock) {
   selectedStock = stock;
   if (!stock) return;
+  const hasQuote = hasLiveQuote(stock);
   const change = Number(stock.change || 0);
   if (stockName) stockName.textContent = COMPANY_NAMES[stock.symbol] || stock.symbol;
   if (stockSymbol) stockSymbol.textContent = stock.symbol;
   if (stockExchange) stockExchange.textContent = `${stock.symbol} • US MARKET`;
-  if (stockPrice) stockPrice.textContent = formatMoney(stock.price);
-  if (stockChange) { stockChange.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}% today`; stockChange.className = change >= 0 ? 'positive' : 'negative'; }
-  if (stockStatus) stockStatus.textContent = 'Live quote';
+  if (stockPrice) stockPrice.textContent = hasQuote ? formatMoney(stock.price) : '—';
+  if (stockChange) { stockChange.textContent = hasQuote ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}% today` : 'Awaiting live quote'; stockChange.className = hasQuote ? (change >= 0 ? 'positive' : 'negative') : ''; }
+  if (stockStatus) stockStatus.textContent = hasQuote ? 'Live quote' : 'Quote pending';
   document.querySelectorAll('.price-card-item').forEach(card => card.classList.toggle('selected', card.dataset.symbol === stock.symbol));
   if (candleSeries) loadHistory(stock.symbol, selectedPeriod);
 }
+
 function renderPriceCard(stock) {
   const card = document.createElement('button'); card.type='button'; card.className='price-card-item'; card.dataset.symbol=stock.symbol;
-  const change=Number(stock.change||0);
-  card.innerHTML=`<span class="price-symbol">${stock.symbol}</span><strong>${formatMoney(stock.price)}</strong><span class="price-change ${change>=0?'positive':'negative'}">${change>=0?'▲':'▼'} ${Math.abs(change).toFixed(2)}%</span><span class="price-time">Live quote</span>`;
+  const hasQuote = hasLiveQuote(stock);
+  const change = Number(stock.change || 0);
+  card.innerHTML=`<span class="price-symbol">${stock.symbol}</span><strong>${hasQuote ? formatMoney(stock.price) : '—'}</strong><span class="price-change ${hasQuote ? (change>=0?'positive':'negative') : ''}">${hasQuote ? `${change>=0?'▲':'▼'} ${Math.abs(change).toFixed(2)}%` : 'Quote pending'}</span><span class="price-time">${hasQuote ? 'Live quote' : 'Awaiting update'}</span>`;
   card.addEventListener('click',()=>setSelectedStock(stock)); return card;
 }
 function filterPriceCards(){ const query=(marketSearchInput?.value||'').trim().toUpperCase(); document.querySelectorAll('.price-card-item').forEach(card=>{const symbol=card.dataset.symbol||'';const name=COMPANY_NAMES[symbol]||'';card.hidden=Boolean(query)&&!symbol.includes(query)&&!name.toUpperCase().includes(query);}); }
 function renderMovers(){
   if(!movers)return;
-  const gainers=[...stocks].sort((a,b)=>Number(b.change||0)-Number(a.change||0)); const losers=[...stocks].sort((a,b)=>Number(a.change||0)-Number(b.change||0));
+  const liveStocks=stocks.filter(stock=>Number.isFinite(Number(stock.change)));
+  const gainers=[...liveStocks].sort((a,b)=>Number(b.change||0)-Number(a.change||0)); const losers=[...liveStocks].sort((a,b)=>Number(a.change||0)-Number(b.change||0));
   const mode=document.querySelector('.toggle button.selected')?.dataset.mover||'gainers'; const list=(mode==='losers'?losers:gainers).slice(0,5);
-  movers.innerHTML=list.map(stock=>{const change=Number(stock.change||0);return `<button class="mover-row" type="button" data-symbol="${stock.symbol}"><span><b>${stock.symbol}</b><small>${COMPANY_NAMES[stock.symbol]||'US Equity'}</small></span><span><strong>${formatMoney(stock.price)}</strong><em class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</em></span></button>`;}).join('');
+  movers.innerHTML=list.length ? list.map(stock=>{const change=Number(stock.change||0);return `<button class="mover-row" type="button" data-symbol="${stock.symbol}"><span><b>${stock.symbol}</b><small>${COMPANY_NAMES[stock.symbol]||'US Equity'}</small></span><span><strong>${formatMoney(stock.price)}</strong><em class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${change.toFixed(2)}%</em></span></button>`;}).join('') : '<div class="news-empty">Live mover data is updating.</div>';
   movers.querySelectorAll('.mover-row').forEach(row=>row.addEventListener('click',()=>{const stock=stocks.find(item=>item.symbol===row.dataset.symbol);setSelectedStock(stock);document.getElementById('chart-card')?.scrollIntoView({behavior:'smooth',block:'center'});}));
 }
 async function loadPrices(){
@@ -63,8 +73,11 @@ async function loadPrices(){
   try{
     if(pricesStatus)pricesStatus.textContent='Updating...';
     const response=await fetch(apiUrl('/api/latest-prices'),{cache:'no-store'}); if(!response.ok)throw new Error(`Prices API returned ${response.status}`);
-    const data=await response.json(); stocks=Array.isArray(data.data)?data.data:[]; priceGrid.innerHTML=''; stocks.forEach(stock=>priceGrid.appendChild(renderPriceCard(stock)));
-    if(pricesStatus)pricesStatus.textContent=`${stocks.length} stocks • updated ${formatTime()}`;
+    const data=await response.json(); const returned=Array.isArray(data.data)?data.data:[]; const bySymbol=new Map(returned.map(stock=>[String(stock.symbol||'').toUpperCase(),stock]));
+    stocks=STOCK_SYMBOLS.map(symbol=>bySymbol.get(symbol)||{symbol,price:null,change:null,timestamp:null});
+    priceGrid.innerHTML=''; stocks.forEach(stock=>priceGrid.appendChild(renderPriceCard(stock)));
+    const liveCount=stocks.filter(hasLiveQuote).length;
+    if(pricesStatus)pricesStatus.textContent=`20 stocks • ${liveCount} live • updated ${formatTime()}`;
     if(marketUpdated)marketUpdated.textContent=`Last update ${formatTime()}`;
     renderMovers(); filterPriceCards();
     if(!selectedStock||!stocks.some(stock=>stock.symbol===selectedStock.symbol))setSelectedStock(stocks[0]); else setSelectedStock(stocks.find(stock=>stock.symbol===selectedStock.symbol));
@@ -96,6 +109,7 @@ async function loadHistory(symbol,period){
 function updatePrediction(stock){
   const forecast=document.getElementById('forecast-price'); const changeLabel=document.getElementById('forecast-change'); const score=document.getElementById('confidence-score'); const bar=document.getElementById('confidence-bar');
   if(!stock||!forecast||!changeLabel||!score||!bar)return;
+  if(!hasLiveQuote(stock)){forecast.textContent='—';changeLabel.textContent='Awaiting live quote';score.textContent='—';bar.style.width='0%';return;}
   const change=Number(stock.change||0); const confidence=Math.max(52,Math.min(94,Math.round(68+Math.abs(change)*5)));
   forecast.textContent=formatMoney(Number(stock.price)*(1+change/100*.5)); changeLabel.textContent=`${change>=0?'+':''}${(change*.5).toFixed(2)}% momentum signal`; score.textContent=`${confidence}%`; bar.style.width=`${confidence}%`;
 }
