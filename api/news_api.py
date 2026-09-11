@@ -89,37 +89,9 @@ STOCK_FALLBACK_IMAGES = {
 DEFAULT_STOCK_IMAGE = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&auto=format&fit=crop&q=80"
 
 
-def fetch_live_prices():
-    result = []
-    for symbol in NASDAQ_STOCKS:
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            price = info.get("regularMarketPrice")
-            change = info.get("regularMarketChangePercent")
-            result.append({
-                "symbol": symbol,
-                "price": price,
-                "change": change,
-                "image_url": STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE),
-            })
-        except Exception:
-            result.append({
-                "symbol": symbol,
-                "price": None,
-                "change": None,
-                "image_url": STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE),
-            })
-    return result
-
-
 @app.get("/api/latest-prices")
 def latest_prices():
-    """Return the most recent live price for each symbol.
-
-    stock_latest is intentionally separate from stock_prices: the latter is
-    historical OHLCV data, while this endpoint serves the live-price cards.
-    """
+    """Return the latest live prices stored in stock_latest."""
     try:
         response = (
             supabase.table("stock_latest")
@@ -158,7 +130,7 @@ def news():
         if not image_url:
             image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
             row["image_url"] = image_url
-        row["image_proxy_url"] = f"/api/news-image?url={quote(image_url, safe=":/?#[]@!$&'()*+,;=")}"
+        row["image_proxy_url"] = "/api/news-image?url=" + quote(image_url, safe=":/?#[]@!$&'()*+,;=")
     return jsonify({
         "data": rows,
         "page": page,
