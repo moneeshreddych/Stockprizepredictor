@@ -1,0 +1,42 @@
+/* Styles for live stock prices grid */
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.price-card-item {
+  background: #fff;
+  border: 1px solid #bacac1;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  box-shadow: 0 2px 6px #1c252e12;
+}
+
+.price-card-item .symbol {
+  font-weight: 600;
+  color: #006c4f;
+}
+
+.price-card-item .price {
+  font-size: 1.2em;
+  margin: 4px 0;
+}
+
+.price-card-item .change {
+  font-size: 0.9em;
+}
+
+.price-card-item .change.positive {
+  color: #28a745;
+}
+
+.price-card-item .change.negative {
+  color: #dc3545;
+}
+
+.price-card-item.error {
+  color: #dc3545;
+}

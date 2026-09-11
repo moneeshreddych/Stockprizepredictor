@@ -55,6 +55,54 @@ class PriceRepository:
         except Exception as exc:
             logger.debug("Supabase upsert price error: %s", exc)
             return len(records)
+    @staticmethod
+    def get_latest_price(symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch the latest consolidated price for a given symbol from the stock_latest table."""
+        try:
+            response = (
+                supabase.table("stock_latest")
+                .select("symbol,price,change,updated_at")
+                .eq("symbol", symbol)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            data = response.data or []
+            if data:
+                return data[0]
+        except Exception as exc:
+            logger.debug("Supabase latest price fetch error for %s: %s", symbol, exc)
+        return None
+    @staticmethod
+    def get_latest_price(symbol: str) -> Optional[Dict[str, Any]]:
+        """Fetch the latest consolidated price for a given symbol from the stock_latest table."""
+        try:
+            response = (
+                supabase.table("stock_latest")
+                .select("symbol,price,change,updated_at")
+                .eq("symbol", symbol)
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            data = response.data or []
+            if data:
+                return data[0]
+        except Exception as exc:
+            logger.debug("Supabase latest price fetch error for %s: %s", symbol, exc)
+        return None
+        if not records:
+            return 0
+        try:
+            response = (
+                supabase.table("stock_prices")
+                .upsert(records, on_conflict="stock_id,date", ignore_duplicates=False)
+                .execute()
+            )
+            return len(response.data or [])
+        except Exception as exc:
+            logger.debug("Supabase upsert price error: %s", exc)
+            return len(records)
 
     @staticmethod
     def save_prediction(record: Dict[str, Any]) -> bool:

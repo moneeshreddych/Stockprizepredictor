@@ -17,6 +17,44 @@ const newsStatus = document.querySelector('.news-status');
 const newsRefresh = document.querySelector('.news-card a');
 const NEWS_LIMIT = 6;
 
+// Function to render a single price card
+function renderPriceCard(stock) {
+  const card = document.createElement('div');
+  card.className = 'price-card-item';
+  card.innerHTML = `
+    <div class="symbol">${stock.symbol}</div>
+    <div class="price">${stock.price?.toFixed(2) ?? 'N/A'}</div>
+    <div class="change ${stock.change >= 0 ? 'positive' : 'negative'}">
+      ${stock.change >= 0 ? '+' : ''}${stock.change?.toFixed(2) ?? '0.00'}%
+    </div>
+  `;
+  return card;
+}
+
+
+
+
+// Load live stock prices from the backend API and populate the grid
+async function loadPrices() {
+  const grid = document.getElementById('price-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  try {
+    const response = await fetch("/api/latest-prices");
+    if (!response.ok) throw new Error(`Prices API returned ${response.status}`);
+    const data = await response.json();
+    const stocks = data.data || [];
+    stocks.forEach(stock => {
+      const card = renderPriceCard(stock);
+      grid.appendChild(card);
+    });
+  } catch (error) {
+    console.error('Failed to load live prices:', error);
+    grid.innerHTML = '<div class="price-card-item error">Unable to load prices.</div>';
+  }
+}
+
+
 async function loadNews() {
   if (!newsList) return;
   if (newsStatus) newsStatus.textContent = 'Loading latest news...';
@@ -46,3 +84,4 @@ if (newsRefresh) {
 }
 
 loadNews();
+loadPrices();

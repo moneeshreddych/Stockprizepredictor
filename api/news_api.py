@@ -8,6 +8,10 @@ import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory, Response
 from supabase import create_client
+import yfinance as yf
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from news.stock_config import NASDAQ_STOCKS
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
@@ -83,6 +87,43 @@ STOCK_FALLBACK_IMAGES = {
     "TXN": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=80",
 }
 DEFAULT_STOCK_IMAGE = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&auto=format&fit=crop&q=80"
+
+# ---------------------------------------------------------------------------
+# Live price endpoint
+# ---------------------------------------------------------------------------
+
+def fetch_live_prices():
+    result = []
+    for symbol, cfg in NASDAQ_STOCKS.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            price = info.get("regularMarketPrice")
+            change = info.get("regularMarketChangePercent")
+            image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
+            result.append({
+                "symbol": symbol,
+                "price": price,
+                "change": change,
+                "image_url": image_url,
+            })
+        except Exception:
+            result.append({
+                "symbol": symbol,
+                "price": None,
+                "change": None,
+                "image_url": STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE),
+            })
+    return result
+
+@app.get("/api/latest-prices")
+def latest_prices():
+    try:
+        resp = supabase.table("stock_latest").select("symbol,price,updated_at").order("symbol").execute()
+        data = resp.data or []
+        return jsonify({"data": data})
+    except Exception as exc:
+        return jsonify({"error": "Unable to retrieve data"}), 500
 
 
 @app.get("/api/news")
