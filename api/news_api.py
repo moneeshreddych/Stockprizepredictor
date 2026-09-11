@@ -119,7 +119,7 @@ def fetch_live_prices():
 @app.get("/api/latest-prices")
 def latest_prices():
     try:
-        resp = supabase.table("stock_latest").select("symbol,price,updated_at").order("symbol").execute()
+        resp = supabase.table("stock_prices").select("symbol,price,updated_at").order("symbol").execute()
         data = resp.data or []
         return jsonify({"data": data})
     except Exception as exc:

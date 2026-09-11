@@ -1,4 +1,5 @@
-import os
+import sys, os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import asyncio
 import datetime
 import logging
@@ -16,6 +17,9 @@ from src.database.supabase_client import supabase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("collector")
+# Load environment variables from .env (including TWELVE_DATA_API_KEY)
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
 
@@ -24,7 +28,11 @@ api_token_bucket = TokenBucket(max_tokens=API_DAILY_LIMIT, refill_interval_secon
 
 def build_twelvedata_url(symbol: str) -> str:
     base = "https://api.twelvedata.com/price"
-    api_key = os.getenv("TWELVEDATA_API_KEY")
+    api_key = os.getenv("TWELVE_DATA_API_KEY")
+    if not api_key:
+        logger.error("TWELVE_DATA_API_KEY is not set in environment")
+    else:
+        logger.info("TWELVE_DATA_API_KEY loaded successfully")
     return f"{base}?symbol={symbol}&apikey={api_key}"
 
 async def fetch_price(symbol: str) -> Dict[str, Any]:

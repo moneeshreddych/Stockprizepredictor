@@ -20,4 +20,4 @@ INDICATORS = [
 
 # Supabase table names
 TABLE_PRICES = "stock_prices"
-TABLE_LATEST = "stock_latest"
+TABLE_LATEST = "stock_prices"
