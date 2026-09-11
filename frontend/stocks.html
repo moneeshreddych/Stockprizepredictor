@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f8f7">
+  <title>BullInsights — Stocks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/live_prices.css">
+  <link rel="stylesheet" href="css/stocks.css">
+  <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body class="dashboard-page stocks-page">
+  <aside class="sidebar">
+    <a class="brand-lockup" href="index.html" aria-label="BullInsights home">
+      <span class="brand-bull" aria-hidden="true"><svg viewBox="0 0 64 52"><path d="M7 10 18 2l8 9 6-6 6 6 8-9 11 8-3 20-13 13H23L10 30 7 10Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M18 21c4 5 9 7 14 7s10-2 14-7M27 39l5-6 5 6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="brand-word"><b>BULL</b><em>INSIGHTS</em></span>
+    </a>
+    <div class="brand-tagline">Smarter insights. Brighter moves.</div>
+    <nav class="side-nav" aria-label="Primary navigation">
+      <a href="dashboard.html"><span class="material-symbols-outlined">dashboard</span><span>Dashboard</span></a>
+      <a class="active" href="stocks.html"><span class="material-symbols-outlined">monitoring</span><span>Stocks</span></a>
+      <a href="predictions.html"><span class="material-symbols-outlined">psychology</span><span>Predictions</span></a>
+      <a href="news.html"><span class="material-symbols-outlined">newspaper</span><span>News</span></a>
+    </nav>
+    <div class="sidebar-promo">
+      <div class="promo-icon"><span class="material-symbols-outlined">show_chart</span></div>
+      <strong>Track the market<br>in one place.</strong>
+      <small>Live prices, historical charts and market movers.</small>
+      <a class="promo-link" href="predictions.html">Open predictions <span class="material-symbols-outlined">arrow_forward</span></a>
+    </div>
+  </aside>
+
+  <div class="dash-main">
+    <header class="dash-top">
+      <div class="mobile-brand"><span class="brand-bull"><svg viewBox="0 0 64 52"><path d="M7 10 18 2l8 9 6-6 6 6 8-9 11 8-3 20-13 13H23L10 30 7 10Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M18 21c4 5 9 7 14 7s10-2 14-7M27 39l5-6 5 6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><b>BULL</b><em>INSIGHTS</em></span></div>
+      <div class="search-box"><span class="material-symbols-outlined">search</span><input id="market-search-input" type="search" placeholder="Search stocks by symbol or company"><kbd>⌘ K</kbd></div>
+    </header>
+
+    <main class="dash-content stocks-content">
+      <section class="page-heading"><div><span class="eyebrow live-eyebrow"><i></i>LIVE STOCK MARKET</span><h1>Stocks</h1><p>Real-time quotes, price history and market movers.</p></div><div class="page-status"><span class="live-dot"></span><b id="prices-status">Connecting...</b><button class="mini-refresh" id="prices-refresh" type="button" title="Refresh prices"><span class="material-symbols-outlined">refresh</span></button></div></section>
+
+      <section class="stocks-layout">
+        <aside class="card stock-watch-card">
+          <div class="section-head"><div><h2>Watchlist</h2><small>Live US equities</small></div></div>
+          <div class="watch-tabs"><span class="active">All</span><span>Gainers</span><span>Losers</span></div>
+          <div class="price-grid stock-price-grid" id="price-grid"></div>
+        </aside>
+
+        <div class="stock-main-column">
+          <section class="selected-heading stock-selected-heading">
+            <div><span class="eyebrow">SELECTED STOCK</span><h1 id="selected-name">Apple Inc.</h1><p><b id="selected-symbol">AAPL</b><span>•</span><span id="selected-exchange">US MARKET</span><i></i><span id="selected-status">Live quote</span></p></div>
+            <div class="selected-price"><strong id="selected-price">—</strong><span id="selected-change">—</span></div>
+          </section>
+
+          <section class="card chart-card" id="chart-card">
+            <div class="chart-card-top"><div class="chart-tabs" id="periods"><button class="selected" data-period="1D" type="button">1D</button><button data-period="1W" type="button">1W</button><button data-period="1M" type="button">1M</button><button data-period="1Y" type="button">1Y</button></div><div class="chart-tools"><span id="chart-status">Loading chart...</span><button id="chart-refresh" type="button" title="Refresh chart"><span class="material-symbols-outlined">refresh</span></button></div></div>
+            <div class="chart-meta"><span><i class="chart-green"></i> Candlestick</span><span><i class="chart-volume"></i> Volume</span><span class="chart-source">Live market data</span></div>
+            <div class="market-chart" id="market-chart"></div>
+            <div class="chart-stats"><div><span>Open</span><b id="stat-open">—</b></div><div><span>High</span><b id="stat-high">—</b></div><div><span>Low</span><b id="stat-low">—</b></div><div><span>Previous close</span><b id="stat-prev">—</b></div></div>
+          </section>
+
+          <section class="card movers-card"><div class="section-head"><div><span class="eyebrow">MARKET ACTIVITY</span><h2>Top Movers</h2><small>Based on the latest live quote changes</small></div><div class="toggle"><button class="selected" data-mover="gainers" type="button">Gainers</button><button data-mover="losers" type="button">Losers</button></div></div><div class="movers" id="movers"></div></section>
+        </div>
+      </section>
+
+      <footer class="footer dash-footer"><div><strong><b>BULL</b><em>INSIGHTS</em></strong><small>Market intelligence for smarter decisions.</small></div><div class="footer-links"><a href="dashboard.html">Dashboard</a><a href="predictions.html">Predictions</a><a href="news.html">News</a></div></footer>
+    </main>
+  </div>
+  <script src="js/config.js"></script><script src="js/news-renderer.js"></script><script src="js/app.js"></script>
+</body>
+</html>
