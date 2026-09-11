@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f5f8f7">
+  <title>BullInsights — Predictions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:FILL@0;1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/live_prices.css">
+  <link rel="stylesheet" href="css/predictions.css">
+</head>
+<body class="dashboard-page predictions-page">
+  <aside class="sidebar">
+    <a class="brand-lockup" href="index.html" aria-label="BullInsights home"><span class="brand-bull" aria-hidden="true"><svg viewBox="0 0 64 52"><path d="M7 10 18 2l8-8 6-6 6 6 8-8 11 8-3 20-13 13H23L10 30 7 10Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M18 21c4 5 9 7 14 7s10-2 14-7M27 39l5-6 5 6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="brand-word"><b>BULL</b><em>INSIGHTS</em></span></a>
+    <div class="brand-tagline">Smarter insights. Brighter moves.</div>
+    <nav class="side-nav" aria-label="Primary navigation">
+      <a href="dashboard.html"><span class="material-symbols-outlined">dashboard</span><span>Dashboard</span></a>
+      <a href="stocks.html"><span class="material-symbols-outlined">monitoring</span><span>Stocks</span></a>
+      <a class="active" href="predictions.html"><span class="material-symbols-outlined">psychology</span><span>Predictions</span></a>
+      <a href="news.html"><span class="material-symbols-outlined">newspaper</span><span>News</span></a>
+    </nav>
+    <div class="sidebar-promo"><div class="promo-icon"><span class="material-symbols-outlined">insights</span></div><strong>Signals, not noise.</strong><small>Use the market momentum signal as one input alongside your own research.</small><a class="promo-link" href="stocks.html">View live stocks <span class="material-symbols-outlined">arrow_forward</span></a></div>
+  </aside>
+
+  <div class="dash-main">
+    <header class="dash-top"><div class="mobile-brand"><span class="brand-bull"><svg viewBox="0 0 64 52"><path d="M7 10 18 2l8-8 6-6 6 6 8-8 11 8-3 20-13 13H23L10 30 7 10Z" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/><path d="M18 21c4 5 9 7 14 7s10-2 14-7M27 39l5-6 5 6" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span><b>BULL</b><em>INSIGHTS</em></span></div><div class="search-box"><span class="material-symbols-outlined">search</span><input id="prediction-search" type="search" placeholder="Search a stock for its signal"><kbd>⌘ K</kbd></div></header>
+
+    <main class="dash-content predictions-content">
+      <section class="page-heading"><div><span class="eyebrow live-eyebrow"><i></i>BULLINSIGHTS SIGNALS</span><h1>Predictions</h1><p>Momentum-based indicative signals generated from the latest live stock quote.</p></div><a class="btn secondary" href="stocks.html">Open live stocks <span class="material-symbols-outlined">arrow_forward</span></a></section>
+
+      <section class="prediction-layout">
+        <section class="card prediction-hero">
+          <div class="prediction-hero-top"><div><span class="eyebrow">SELECTED STOCK</span><h2 id="prediction-name">Apple Inc.</h2><p><b id="prediction-symbol">AAPL</b> <span>•</span> <span>Live quote</span></p></div><div class="prediction-price"><strong id="prediction-current">—</strong><span id="prediction-current-change">—</span></div></div>
+          <div class="signal-main"><div class="signal-label">Indicative next move</div><div class="signal-row"><strong id="forecast-price">—</strong><span id="forecast-change">Loading signal...</span></div><div class="confidence-row"><span>Confidence score</span><b id="confidence-score">—</b></div><div class="bar"><i id="confidence-bar" style="width:0%"></i></div><p id="prediction-rationale">Select a stock to calculate its current momentum signal.</p></div>
+        </section>
+
+        <section class="card selector-card"><div class="section-head"><div><h2>Select a stock</h2><small>Latest quote from BullInsights</small></div><span class="signal-badge">LIVE</span></div><div class="prediction-stock-list" id="prediction-stock-list"><div class="news-empty">Loading stocks...</div></div></section>
+      </section>
+
+      <section class="prediction-info-grid">
+        <section class="card"><span class="eyebrow">HOW IT WORKS</span><h2>Momentum signal</h2><p>The current signal uses the latest quote change to estimate a short-term directional move. It is an indicative product feature, not a guaranteed forecast.</p><div class="formula-box">Signal = latest price + 50% of today's percentage momentum</div></section>
+        <section class="card"><span class="eyebrow">READ THE SCORE</span><h2>Confidence</h2><div class="score-guide"><div><span>52–64%</span><small>Low momentum</small></div><div><span>65–79%</span><small>Moderate momentum</small></div><div><span>80–94%</span><small>Strong momentum</small></div></div></section>
+      </section>
+
+      <footer class="footer dash-footer"><div><strong><b>BULL</b><em>INSIGHTS</em></strong><small>Market intelligence for smarter decisions.</small></div><div class="footer-links"><a href="dashboard.html">Dashboard</a><a href="stocks.html">Stocks</a><a href="news.html">News</a></div></footer>
+    </main>
+  </div>
+  <script src="js/config.js"></script><script src="js/predictions.js"></script>
+</body>
+</html>
