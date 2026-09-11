@@ -14,12 +14,19 @@ function formatNewsTime(value) {
   return `${Math.floor(hours / 24)} days ago`;
 }
 
+function normalizeImageUrl(value) {
+  if (!value || typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed.startsWith("http://")) return `https://${trimmed.slice(7)}`;
+  return trimmed;
+}
+
 function renderNewsArticle(article) {
   const card = document.createElement("article");
   card.className = "news-item";
   card.innerHTML = `
     <div class="news-image">
-      <img loading="lazy" alt="Financial news">
+      <img alt="Financial news" referrerpolicy="no-referrer">
       <div class="news-image-fallback">
         <div>${article.symbol || "MARKET"}</div>
         <small>FINANCIAL NEWS</small>
@@ -39,20 +46,17 @@ function renderNewsArticle(article) {
 
   const img = card.querySelector("img");
   const fallback = card.querySelector(".news-image-fallback");
-  const sources = [
-    article.image_proxy_url,
-    article.image_url,
-    article.fallback_image_url,
-  ].filter(Boolean);
+  const directImage = normalizeImageUrl(article.image_url);
+  const stockFallback = normalizeImageUrl(article.fallback_image_url);
+  const proxyImage = normalizeImageUrl(article.image_proxy_url);
+  const sources = [directImage, stockFallback, proxyImage].filter(Boolean);
   let sourceIndex = 0;
 
-  // Keep the image element rendered while it loads. Hiding a lazy-loaded
-  // <img> with display:none can prevent the browser from starting the
-  // request, so neither onload nor onerror fires and the fallback stays visible.
   img.style.display = "block";
   if (fallback) fallback.style.display = "none";
 
   const showFallback = () => {
+    img.removeAttribute("src");
     img.style.display = "none";
     if (fallback) fallback.style.display = "flex";
   };
@@ -62,9 +66,7 @@ function renderNewsArticle(article) {
       showFallback();
       return;
     }
-    const source = sources[sourceIndex++];
-    img.style.display = "block";
-    img.src = source;
+    img.src = sources[sourceIndex++];
   };
 
   img.onload = () => {
