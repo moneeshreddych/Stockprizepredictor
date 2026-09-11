@@ -19,7 +19,7 @@ function renderNewsArticle(article) {
   card.className = "news-item";
   card.innerHTML = `
     <div class="news-image">
-      <img loading="lazy" style="display:none">
+      <img loading="lazy" alt="Financial news">
       <div class="news-image-fallback">
         <div>${article.symbol || "MARKET"}</div>
         <small>FINANCIAL NEWS</small>
@@ -39,21 +39,38 @@ function renderNewsArticle(article) {
 
   const img = card.querySelector("img");
   const fallback = card.querySelector(".news-image-fallback");
+  const sources = [
+    article.image_proxy_url,
+    article.image_url,
+    article.fallback_image_url,
+  ].filter(Boolean);
+  let sourceIndex = 0;
 
-  if (article.image_proxy_url) {
-    img.src = article.image_proxy_url;
-    img.alt = article.source || "Financial news";
-    img.onload = () => {
-      img.style.display = "block";
-      if (fallback) fallback.style.display = "none";
-    };
-    img.onerror = () => {
-      img.style.display = "none";
-      if (fallback) fallback.style.display = "flex";
-    };
-  } else {
+  const showFallback = () => {
     img.style.display = "none";
     if (fallback) fallback.style.display = "flex";
+  };
+
+  const tryNextImage = () => {
+    if (sourceIndex >= sources.length) {
+      showFallback();
+      return;
+    }
+    const source = sources[sourceIndex++];
+    img.style.display = "none";
+    img.src = source;
+  };
+
+  img.onload = () => {
+    img.style.display = "block";
+    if (fallback) fallback.style.display = "none";
+  };
+  img.onerror = tryNextImage;
+
+  if (sources.length) {
+    tryNextImage();
+  } else {
+    showFallback();
   }
 
   if (article.url) {
