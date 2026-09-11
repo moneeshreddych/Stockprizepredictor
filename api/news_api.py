@@ -125,8 +125,10 @@ def news():
     )
     rows = response.data or []
     for row in rows:
-        image_url = row.get("image_url") or STOCK_FALLBACK_IMAGES.get(row.get("symbol"), DEFAULT_STOCK_IMAGE)
+        fallback_image_url = STOCK_FALLBACK_IMAGES.get(row.get("symbol"), DEFAULT_STOCK_IMAGE)
+        image_url = row.get("image_url") or fallback_image_url
         row["image_url"] = image_url
+        row["fallback_image_url"] = fallback_image_url
         row["image_proxy_url"] = url_for("news_image", url=image_url, _external=True)
     return jsonify({
         "data": rows,
