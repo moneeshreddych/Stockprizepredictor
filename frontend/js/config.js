@@ -1,5 +1,5 @@
 /*
  * Frontend -> backend configuration.
- * Replace the production URL after deploying Flask to Cloud Run.
+ * Production backend is hosted on Render.
  */
-window.BULLINSIGHTS_API_URL = "http://127.0.0.1:5000";
+window.BULLINSIGHTS_API_URL = "https://stockprizepredictor.onrender.com";
