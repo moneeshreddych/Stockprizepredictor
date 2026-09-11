@@ -6,7 +6,7 @@ from urllib.parse import urlparse, quote
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request, send_from_directory, Response
+from flask import Flask, jsonify, request, send_from_directory, Response, url_for
 from supabase import create_client
 import yfinance as yf
 import sys
@@ -46,22 +46,19 @@ def allowed_image_url(value):
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
 
 @app.get("/")
 def home():
-    return send_from_directory(FRONTEND, "index.html")
+    return jsonify({"service": "BullInsights API", "status": "ok"})
 
 
-@app.get("/dashboard.html")
-def dashboard():
-    return send_from_directory(FRONTEND, "dashboard.html")
-
-
-@app.get("/news.html")
-def news_page():
-    return send_from_directory(FRONTEND, "news.html")
+@app.get("/api/health")
+def health():
+    return jsonify({"status": "ok", "service": "BullInsights API"})
 
 
 STOCK_FALLBACK_IMAGES = {
@@ -99,8 +96,7 @@ def latest_prices():
             .order("symbol")
             .execute()
         )
-        data = response.data or []
-        return jsonify({"data": data})
+        return jsonify({"data": response.data or []})
     except Exception:
         app.logger.exception("Unable to retrieve latest prices from Supabase")
         return jsonify({"error": "Unable to retrieve latest prices"}), 500
@@ -125,12 +121,9 @@ def news():
     )
     rows = response.data or []
     for row in rows:
-        image_url = row.get("image_url")
-        symbol = row.get("symbol")
-        if not image_url:
-            image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
-            row["image_url"] = image_url
-        row["image_proxy_url"] = "/api/news-image?url=" + quote(image_url, safe=":/?#[]@!$&'()*+,;=")
+        image_url = row.get("image_url") or STOCK_FALLBACK_IMAGES.get(row.get("symbol"), DEFAULT_STOCK_IMAGE)
+        row["image_url"] = image_url
+        row["image_proxy_url"] = url_for("news_image", url=image_url, _external=True)
     return jsonify({
         "data": rows,
         "page": page,
@@ -147,7 +140,7 @@ def news_image():
         return jsonify({"error": "Image URL is not allowed"}), 400
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         }
         response = requests.get(image_url, timeout=10, headers=headers, allow_redirects=True)
@@ -155,15 +148,10 @@ def news_image():
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
         if not content_type.startswith("image/"):
             return jsonify({"error": "URL did not return an image"}), 415
-        return Response(
-            response.content,
-            status=200,
-            content_type=content_type,
-            headers={"Cache-Control": "public, max-age=3600"},
-        )
+        return Response(response.content, status=200, content_type=content_type, headers={"Cache-Control": "public, max-age=3600"})
     except requests.RequestException:
         return jsonify({"error": "Unable to fetch image"}), 502
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.getenv("PORT", "5000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
