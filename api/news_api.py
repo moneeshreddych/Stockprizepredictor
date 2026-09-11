@@ -88,24 +88,20 @@ STOCK_FALLBACK_IMAGES = {
 }
 DEFAULT_STOCK_IMAGE = "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=600&auto=format&fit=crop&q=80"
 
-# ---------------------------------------------------------------------------
-# Live price endpoint
-# ---------------------------------------------------------------------------
 
 def fetch_live_prices():
     result = []
-    for symbol, cfg in NASDAQ_STOCKS.items():
+    for symbol in NASDAQ_STOCKS:
         try:
             ticker = yf.Ticker(symbol)
             info = ticker.info
             price = info.get("regularMarketPrice")
             change = info.get("regularMarketChangePercent")
-            image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
             result.append({
                 "symbol": symbol,
                 "price": price,
                 "change": change,
-                "image_url": image_url,
+                "image_url": STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE),
             })
         except Exception:
             result.append({
@@ -116,14 +112,26 @@ def fetch_live_prices():
             })
     return result
 
+
 @app.get("/api/latest-prices")
 def latest_prices():
+    """Return the most recent live price for each symbol.
+
+    stock_latest is intentionally separate from stock_prices: the latter is
+    historical OHLCV data, while this endpoint serves the live-price cards.
+    """
     try:
-        resp = supabase.table("stock_prices").select("symbol,price,updated_at").order("symbol").execute()
-        data = resp.data or []
+        response = (
+            supabase.table("stock_latest")
+            .select("symbol,price,change,timestamp")
+            .order("symbol")
+            .execute()
+        )
+        data = response.data or []
         return jsonify({"data": data})
-    except Exception as exc:
-        return jsonify({"error": "Unable to retrieve data"}), 500
+    except Exception:
+        app.logger.exception("Unable to retrieve latest prices from Supabase")
+        return jsonify({"error": "Unable to retrieve latest prices"}), 500
 
 
 @app.get("/api/news")
@@ -150,7 +158,7 @@ def news():
         if not image_url:
             image_url = STOCK_FALLBACK_IMAGES.get(symbol, DEFAULT_STOCK_IMAGE)
             row["image_url"] = image_url
-        row["image_proxy_url"] = f"/api/news-image?url={quote(image_url, safe=':/?#[]@!$&\'()*+,;=')}"
+        row["image_proxy_url"] = f"/api/news-image?url={quote(image_url, safe=":/?#[]@!$&'()*+,;=")}"
     return jsonify({
         "data": rows,
         "page": page,
@@ -170,12 +178,7 @@ def news_image():
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
         }
-        response = requests.get(
-            image_url,
-            timeout=10,
-            headers=headers,
-            allow_redirects=True,
-        )
+        response = requests.get(image_url, timeout=10, headers=headers, allow_redirects=True)
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
         if not content_type.startswith("image/"):
