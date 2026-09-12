@@ -7,6 +7,7 @@ __pycache__/
 *.pyo
 data/raw/
 data/processed/
+artifacts/ml/
 .venv/
 venv/
 env/
