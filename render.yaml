@@ -3,11 +3,13 @@ services:
     name: bullinsights-api
     runtime: python
     buildCommand: pip install -r requirements-cloudrun.txt
-    startCommand: gunicorn api.news_api:app --bind 0.0.0.0:$PORT
+    startCommand: gunicorn api.market_server:app --bind 0.0.0.0:$PORT
     envVars:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
         sync: false
       - key: TWELVE_DATA_API_KEY
+        sync: false
+      - key: FINNHUB_API_KEY
         sync: false
