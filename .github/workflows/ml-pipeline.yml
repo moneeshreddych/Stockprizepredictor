@@ -1,0 +1,51 @@
+name: Train ML Predictions
+
+on:
+  workflow_dispatch:
+    inputs:
+      horizons:
+        description: "TFT horizons to train"
+        required: true
+        default: "1d 7d 1m 6m 1y"
+      max_epochs:
+        description: "Maximum TFT epochs per horizon"
+        required: true
+        default: "40"
+
+jobs:
+  train-ml:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ml.txt
+
+      - name: Install ML dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements-ml.txt
+
+      - name: Train FinBERT + TFT and publish predictions
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TFT_MAX_EPOCHS: ${{ inputs.max_epochs }}
+          TFT_EARLY_STOPPING_PATIENCE: "6"
+          PUBLISH_LONG_TERM_SCENARIOS: "1"
+        run: |
+          python -m ml.pipeline finbert
+          python -m ml.pipeline tft --horizons ${{ inputs.horizons }}
+
+      - name: Upload ML metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bullinsights-ml-metrics
+          path: artifacts/ml/*metrics.json
+          if-no-files-found: ignore
