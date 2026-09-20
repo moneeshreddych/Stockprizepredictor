@@ -451,12 +451,12 @@ def train_one(frame, horizon):
         add_encoder_length=True,
     )
 
+    # Build validation from the complete supervised frame so each validation
+    # prediction retains its preceding encoder history.
     validation = TimeSeriesDataSet.from_dataset(
         training,
-        validation_df,
-        min_prediction_idx=int(
-            validation_df["time_idx"].min()
-        ),
+        supervised,
+        min_prediction_idx=int(train_df["time_idx"].max()) + 1,
         stop_randomization=True,
     )
 
