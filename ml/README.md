@@ -1,55 +1,94 @@
-# BullInsights ML training
+# BullInsights ML training and prediction
 
-The production prediction pipeline is now split into two stages:
+BullInsights uses a two-stage production pipeline:
 
-1. **FinBERT** (`ProsusAI/finbert`) scores each financial-news article with positive/negative/neutral probabilities and a composite score `positive - negative`.
-2. **Temporal Fusion Transformer (TFT)** forecasts the next trading-session log return from 60 trading days of OHLCV-derived features plus aggregated FinBERT sentiment.
+1. **FinBERT** (ProsusAI/finbert) scores financial news as positive/neutral/negative and stores the probabilities in `sentiment_scores`.
+2. **Temporal Fusion Transformer (TFT)** learns horizon-specific stock-return distributions from a 60-session encoder containing OHLCV/technical features and aggregated FinBERT sentiment.
+
+The current model name published to Supabase is **FinBERT+TFT-v2**.
+
+## Forecast horizons
+
+| Horizon | Sessions | Method |
+|---|---:|---|
+| 1d | 1 | TFT quantile forecast |
+| 7d | 5 | TFT quantile forecast |
+| 1m | 21 | TFT quantile forecast |
+| 6m | 126 | TFT quantile forecast |
+| 1y | 252 | TFT quantile forecast |
+| 5y | 1260 | CAGR/volatility scenario |
+| 10y | 2520 | CAGR/volatility scenario |
+| 20y | 5040 | CAGR/volatility scenario |
+
+The 1d–1y horizons are actual TFT model outputs with P10/P50/P90 return estimates. The 5y–20y values are explicitly marked as scenario forecasts; the system does not extrapolate a one-day neural forecast for decades.
 
 ## Setup
 
-Use a GPU environment (Google Colab, Kaggle, or a local CUDA machine) for training. The Render web service intentionally does **not** install the heavy ML stack.
+Use a GPU machine such as Google Colab, Kaggle, or a local CUDA environment for training. Render intentionally does not install the heavy ML stack.
 
-```bash
-pip install -r requirements-ml.txt
-```
+    pip install -r requirements-ml.txt
 
-Set the same Supabase variables used by the application:
+Set:
 
-```text
-SUPABASE_URL=...
-SUPABASE_SECRET_KEY=...
-```
+    SUPABASE_URL=...
+    SUPABASE_SECRET_KEY=...
 
-Run the database migration once:
+Run the Supabase migration **before the first v2 publication**:
 
-```text
-database/migrate_ml.sql
-```
+    database/migrate_ml.sql
 
-Then run:
+The migration adds horizon, quantile/scenario fields, and the v2 upsert key.
 
-```bash
-python -m ml.pipeline all
-```
+## Train and publish
 
-or independently:
+Run FinBERT first, then train the TFT horizons:
 
-```bash
-python -m ml.pipeline finbert
-python -m ml.pipeline tft
-```
+    python -m ml.pipeline finbert
+    python -m ml.pipeline tft --horizons 1d 7d 1m 6m 1y
 
-The pipeline reads the historical `stock_prices` and `news_articles` tables, writes FinBERT results to `sentiment_scores`, trains TFT with chronological splits, evaluates on a held-out test period, and publishes the latest one-session probabilistic forecast into `predictions` as `FinBERT+TFT-v1`.
+Or run both stages:
 
-## Model design
+    python -m ml.pipeline all --horizons 1d 7d 1m 6m 1y
 
-- 60-session encoder window
-- 70/15/15 chronological train/validation/test split
-- No random time-series split
-- Quantile loss with P10/P50/P90 outputs
-- Group normalization by stock symbol
-- OHLCV, 1/5/20-day returns, SMA ratios, RSI, MACD, ATR, volatility, volume z-score, market-relative return and FinBERT sentiment
-- Early stopping, learning-rate monitoring and gradient clipping
-- Test MAE, RMSE and directional accuracy are stored with the forecast
+The pipeline:
 
-The model is a research forecast. It is not a guarantee of future market returns.
+- loads all configured stock OHLCV history from stock_prices;
+- scores recent news with FinBERT;
+- builds technical and sentiment features;
+- uses chronological training/validation boundaries;
+- trains one TFT per short/medium horizon;
+- performs inference using the latest 60-session encoder;
+- publishes P10/P50/P90 forecasts to predictions;
+- publishes separate long-horizon scenario forecasts;
+- writes checkpoint and training metadata under artifacts/ml/.
+
+PyTorch Forecasting documents the workflow of creating inference datasets from the training dataset and loading trained checkpoints for prediction. citeturn0search0turn0search6
+
+## GitHub Actions
+
+A manual workflow is available at:
+
+    .github/workflows/ml-pipeline.yml
+
+In GitHub:
+
+**Actions → Train ML Predictions → Run workflow**
+
+The workflow accepts the TFT horizons and maximum epoch count, uses the Supabase secrets, and publishes predictions directly to the database. Standard GitHub-hosted runners are CPU-only, so GPU training is preferable for the initial full training run.
+
+## Prediction API
+
+The Flask API now reads FinBERT+TFT-v2:
+
+    GET /api/predictions
+    GET /api/predictions?symbol=AAPL
+    GET /api/predictions?horizon=1d
+    GET /api/predictions?symbol=AAPL&horizon=1d
+
+The frontend groups the returned rows by stock and horizon.
+
+## Important
+
+A checkpoint file existing in Git does **not** by itself create predictions. The model must be trained against the current Supabase data and the resulting forecast rows must be published to predictions. The API only serves published database forecasts.
+
+This is a research forecasting system, not a guarantee of future market returns or investment advice.
