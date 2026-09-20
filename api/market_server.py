@@ -74,18 +74,76 @@ def market_latest_prices():
 
 @app.get("/api/predictions")
 def predictions():
-    symbol=request.args.get("symbol","").strip().upper()
-    try:
-        q=supabase.table("predictions").select("symbol,prediction_date,target_date,predicted_return,predicted_price,model_name,metrics,created_at").eq("model_name","FinBERT+TFT-v1").order("target_date",desc=True).order("created_at",desc=True).limit(100)
-        if symbol:q=q.eq("symbol",symbol).limit(1)
-        rows=q.execute().data or []
-        prices={str(r["symbol"]).upper():r for r in (supabase.table("stock_latest").select("symbol,price").in_("symbol",[symbol] if symbol else SYMBOLS).execute().data or [])}
-        for r in rows:r["current_price"]=prices.get(str(r["symbol"]).upper(),{}).get("price")
-        if symbol:return jsonify({"data":rows[0] if rows else None})
-        latest={}
-        for r in rows:latest.setdefault(r["symbol"],r)
-        return jsonify({"data":list(latest.values())})
-    except Exception:app.logger.exception("Unable to retrieve ML predictions"); return jsonify({"error":"Unable to retrieve ML predictions"}),500
+    symbol = request.args.get("symbol", "").strip().upper()
+    horizon = request.args.get("horizon", "").strip().lower()
 
-app.view_functions["latest_prices"]=market_latest_prices
-if __name__=="__main__":app.run(host="0.0.0.0",port=int(os.getenv("PORT","5000")))
+    try:
+        query = (
+            supabase.table("predictions")
+            .select(
+                "symbol,prediction_date,target_date,predicted_return,"
+                "predicted_price,model_name,metrics,created_at,horizon,"
+                "horizon_sessions,forecast_type,lower_return,upper_return,"
+                "lower_price,upper_price"
+            )
+            .eq("model_name", "FinBERT+TFT-v2")
+            .order("prediction_date", desc=True)
+            .order("target_date", desc=True)
+            .order("created_at", desc=True)
+            .limit(1000)
+        )
+
+        if symbol:
+            query = query.eq("symbol", symbol)
+        if horizon:
+            query = query.eq("horizon", horizon)
+
+        rows = query.execute().data or []
+        symbols = sorted({str(row["symbol"]).upper() for row in rows})
+
+        if symbols:
+            price_rows = (
+                supabase.table("stock_latest")
+                .select("symbol,price")
+                .in_("symbol", symbols)
+                .execute()
+                .data
+                or []
+            )
+            prices = {
+                str(row["symbol"]).upper(): row.get("price")
+                for row in price_rows
+            }
+        else:
+            prices = {}
+
+        for row in rows:
+            row["current_price"] = prices.get(
+                str(row["symbol"]).upper()
+            )
+
+        # Keep one latest forecast per symbol/horizon for the frontend.
+        latest = {}
+        for row in rows:
+            key = (
+                str(row["symbol"]).upper(),
+                str(row.get("horizon") or ""),
+            )
+            latest.setdefault(key, row)
+
+        ordered = sorted(
+            latest.values(),
+            key=lambda row: (
+                str(row.get("symbol") or ""),
+                str(row.get("horizon") or ""),
+            ),
+        )
+
+        if symbol:
+            return jsonify({"data": ordered})
+
+        return jsonify({"data": ordered})
+    except Exception:
+        app.logger.exception("Unable to retrieve ML predictions")
+        return jsonify({"error": "Unable to retrieve ML predictions"}), 500
+
