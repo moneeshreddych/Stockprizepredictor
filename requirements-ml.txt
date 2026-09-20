@@ -1,6 +1,7 @@
-torch>=2.2
-lightning>=2.4
-pytorch-forecasting>=1.4
+# Training/inference stack for the BullInsights FinBERT + TFT pipeline.
+torch>=2.5,<2.9
+lightning>=2.5,<2.7
+pytorch-forecasting>=1.8,<1.9
 transformers>=4.45
 accelerate>=0.34
 scikit-learn>=1.4
