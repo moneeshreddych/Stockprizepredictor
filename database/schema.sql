@@ -73,13 +73,20 @@ CREATE TABLE IF NOT EXISTS predictions (
     predicted_price NUMERIC(14, 4) NOT NULL,
     model_name VARCHAR(100) NOT NULL,
     metrics JSONB,
+    horizon VARCHAR(20) NOT NULL DEFAULT '1d',
+    horizon_sessions INTEGER,
+    forecast_type VARCHAR(30),
+    lower_return NUMERIC(10, 6),
+    upper_return NUMERIC(10, 6),
+    lower_price NUMERIC(14, 4),
+    upper_price NUMERIC(14, 4),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_stock_pred_target UNIQUE (stock_id, prediction_date, target_date, model_name)
+    CONSTRAINT unique_stock_pred_target_horizon UNIQUE (stock_id, prediction_date, target_date, model_name, horizon)
 );
 
 -- Indexes for Query Optimization
 CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_news_articles_symbol ON news_articles(symbol);
 CREATE INDEX IF NOT EXISTS idx_stock_prices_symbol_date ON stock_prices(symbol, date DESC);
-CREATE INDEX IF NOT EXISTS idx_predictions_symbol_target ON predictions(symbol, target_date DESC);
+CREATE INDEX IF NOT EXISTS idx_predictions_symbol_target ON predictions(symbol, target_date DESC);\nCREATE INDEX IF NOT EXISTS idx_predictions_model_horizon_target ON predictions(model_name, horizon, target_date DESC);
 CREATE INDEX IF NOT EXISTS idx_stock_latest_timestamp ON stock_latest(timestamp DESC);
