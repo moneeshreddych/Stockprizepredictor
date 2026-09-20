@@ -70,6 +70,9 @@ ALTER TABLE public.predictions
     DROP CONSTRAINT IF EXISTS unique_stock_pred_target;
 
 ALTER TABLE public.predictions
+    DROP CONSTRAINT IF EXISTS unique_stock_pred_target_horizon;
+
+ALTER TABLE public.predictions
     ADD CONSTRAINT unique_stock_pred_target_horizon
     UNIQUE (stock_id, prediction_date, target_date, model_name, horizon);
 
