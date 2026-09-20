@@ -108,7 +108,7 @@ class PriceRepository:
     def save_prediction(record: Dict[str, Any]) -> bool:
         try:
             supabase.table("predictions").upsert(
-                record, on_conflict="stock_id,prediction_date,target_date,model_name"
+                record, on_conflict="stock_id,prediction_date,target_date,model_name,horizon"
             ).execute()
             return True
         except Exception as exc:
