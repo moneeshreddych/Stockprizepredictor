@@ -353,15 +353,21 @@ def train_one(frame, horizon):
     return best_model, training, metrics
 
 
-def predict_latest_tft(model, training, frame):
+def predict_latest_tft(model, training, frame, horizon_sessions):
     from pytorch_forecasting import TimeSeriesDataSet
     rows = []
     for symbol in SYMBOLS:
         symbol_frame = frame[frame["symbol"] == symbol].sort_values("date").tail(ENCODER_LENGTH + 1).copy()
         if len(symbol_frame) < ENCODER_LENGTH + 1:
             continue
-        symbol_frame["target_return"] = np.nan
-        symbol_frame["target_close"] = np.nan
+        # Keep encoder target values intact; only the final decoder row
+        # has an unknown future target at inference time.
+        symbol_frame["target_return"] = symbol_frame.groupby("symbol")["close"].transform(
+            lambda series: np.log(series.shift(-horizon_sessions) / series)
+        )
+        symbol_frame["target_close"] = symbol_frame.groupby("symbol")["close"].shift(
+            -horizon_sessions
+        )
         try:
             prediction_dataset = TimeSeriesDataSet.from_dataset(
                 training, symbol_frame, predict=True, stop_randomization=True
@@ -479,7 +485,7 @@ def train_tft(horizons=None):
     total = 0
     for horizon in requested_tft:
         model, training, _ = train_one(frame, horizon)
-        forecasts = predict_latest_tft(model, training, frame)
+        forecasts = predict_latest_tft(model, training, frame, HORIZONS[horizon])
         total += publish_tft_predictions(frame, forecasts, horizon)
 
     if os.getenv("PUBLISH_LONG_TERM_SCENARIOS", "1") == "1":
