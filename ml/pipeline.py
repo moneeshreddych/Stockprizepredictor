@@ -284,7 +284,13 @@ def train_one(frame, horizon):
     train_end = dates[int(0.70 * len(dates))]
     validation_start = dates[int(0.70 * len(dates)) + 1]
     validation_end = dates[int(0.85 * len(dates))]
+    test_start = dates[int(0.85 * len(dates)) + 1]
     train_df = supervised[supervised["date"] <= train_end].copy()
+    train_max_idx = int(train_df["time_idx"].max())
+    base_date = pd.Timestamp(supervised["date"].min())
+    validation_start_idx = int((pd.Timestamp(validation_start) - base_date).days)
+    validation_end_idx = int((pd.Timestamp(validation_end) - base_date).days)
+    test_start_idx = int((pd.Timestamp(test_start) - base_date).days)
 
     training = TimeSeriesDataSet(
         train_df, time_idx="time_idx", target="target_return",
@@ -297,15 +303,28 @@ def train_one(frame, horizon):
         allow_missing_timesteps=True, add_relative_time_idx=True,
         add_target_scales=True, add_encoder_length=True,
     )
+    validation_source = supervised[
+        (supervised["time_idx"] >= train_max_idx - ENCODER_LENGTH)
+        & (supervised["time_idx"] <= validation_end_idx)
+    ].copy()
+    test_source = supervised[
+        (supervised["time_idx"] >= validation_end_idx - ENCODER_LENGTH)
+    ].copy()
     validation = TimeSeriesDataSet.from_dataset(
-        training, supervised,
-        min_prediction_idx=int(train_df["time_idx"].max()) + 1,
+        training, validation_source,
+        min_prediction_idx=validation_start_idx,
+        stop_randomization=True,
+    )
+    test = TimeSeriesDataSet.from_dataset(
+        training, test_source,
+        min_prediction_idx=test_start_idx,
         stop_randomization=True,
     )
     train_loader = training.to_dataloader(
         train=True, batch_size=int(os.getenv("TFT_BATCH_SIZE", "64")), num_workers=0
     )
     validation_loader = validation.to_dataloader(train=False, batch_size=256, num_workers=0)
+    test_loader = test.to_dataloader(train=False, batch_size=256, num_workers=0)
 
     checkpoint = ModelCheckpoint(
         dirpath=str(ARTIFACTS), filename=f"tft-{horizon}-{{epoch:02d}}-{{val_loss:.5f}}",
@@ -340,6 +359,8 @@ def train_one(frame, horizon):
     if not checkpoint.best_model_path:
         raise RuntimeError(f"No checkpoint produced for horizon {horizon}")
     best_model = TemporalFusionTransformer.load_from_checkpoint(checkpoint.best_model_path)
+    test_metrics = trainer.validate(best_model, dataloaders=test_loader, verbose=False)
+    val_loss = trainer.callback_metrics.get("val_loss")
     metrics = {
         "model_name": MODEL_NAME, "horizon": horizon,
         "horizon_sessions": horizon_sessions,
@@ -347,6 +368,10 @@ def train_one(frame, horizon):
         "train_end": str(pd.Timestamp(train_end).date()),
         "validation_start": str(pd.Timestamp(validation_start).date()),
         "validation_end": str(pd.Timestamp(validation_end).date()),
+        "test_start": str(pd.Timestamp(test_start).date()),
+        "test_end": str(pd.Timestamp(dates[-1]).date()),
+        "validation_loss": float(val_loss.detach().cpu()) if val_loss is not None else None,
+        "test_loss": float(test_metrics[0].get("val_loss")) if test_metrics and test_metrics[0].get("val_loss") is not None else None,
         "checkpoint": str(Path(checkpoint.best_model_path).name),
     }
     (ARTIFACTS / f"tft_{horizon}_metrics.json").write_text(json.dumps(metrics, indent=2))

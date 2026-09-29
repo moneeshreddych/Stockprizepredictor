@@ -15,3 +15,5 @@ services:
         sync: false
       - key: ALPACA_SECRET_KEY
         sync: false
+      - key: REDIS_URL
+        sync: false
