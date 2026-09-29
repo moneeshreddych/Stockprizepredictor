@@ -7,6 +7,7 @@ from flask import jsonify, request
 import yfinance as yf
 from api.news_api import app, supabase
 from news.stock_config import get_nasdaq_stocks
+from src.cache.redis_cache import get_json, set_json
 FINNHUB_API_KEY=os.getenv("FINNHUB_API_KEY"); FINNHUB_BASE_URL="https://finnhub.io/api/v1"; MARKET_TZ=ZoneInfo("America/New_York"); SYMBOLS=list(get_nasdaq_stocks().keys()); BATCH_SIZE=5
 
 def _fallback_market_status():
@@ -76,6 +77,10 @@ def market_latest_prices():
 def predictions():
     symbol = request.args.get("symbol", "").strip().upper()
     horizon = request.args.get("horizon", "").strip().lower()
+    cache_key = f"api:predictions:{symbol or 'all'}:{horizon or 'all'}"
+    cached = get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
 
     try:
         query = (
@@ -139,10 +144,13 @@ def predictions():
             ),
         )
 
-        if symbol:
-            return jsonify({"data": ordered})
-
-        return jsonify({"data": ordered})
+        payload = {"data": ordered}
+        set_json(
+            cache_key,
+            payload,
+            int(os.getenv("REDIS_PREDICTIONS_TTL", "300")),
+        )
+        return jsonify(payload)
     except Exception:
         app.logger.exception("Unable to retrieve ML predictions")
         return jsonify({"error": "Unable to retrieve ML predictions"}), 500
