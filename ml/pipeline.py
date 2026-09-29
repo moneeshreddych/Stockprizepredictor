@@ -287,9 +287,10 @@ def train_one(frame, horizon):
     test_start = dates[int(0.85 * len(dates)) + 1]
     train_df = supervised[supervised["date"] <= train_end].copy()
     train_max_idx = int(train_df["time_idx"].max())
-    validation_start_idx = int(pd.Timestamp(validation_start).to_datetime64().astype("datetime64[D]").astype(int))
-    validation_end_idx = int(pd.Timestamp(validation_end).to_datetime64().astype("datetime64[D]").astype(int))
-    test_start_idx = int(pd.Timestamp(test_start).to_datetime64().astype("datetime64[D]").astype(int))
+    base_date = pd.Timestamp(supervised["date"].min())
+    validation_start_idx = int((pd.Timestamp(validation_start) - base_date).days)
+    validation_end_idx = int((pd.Timestamp(validation_end) - base_date).days)
+    test_start_idx = int((pd.Timestamp(test_start) - base_date).days)
 
     training = TimeSeriesDataSet(
         train_df, time_idx="time_idx", target="target_return",
