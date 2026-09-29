@@ -14,6 +14,7 @@ import yfinance as yf
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from news.stock_config import NASDAQ_STOCKS
+from src.cache.redis_cache import get_json, set_json, delete as cache_delete
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
@@ -103,6 +104,10 @@ def make_svg_thumbnail(symbol):
 
 @app.get("/api/latest-prices")
 def latest_prices():
+    cache_key = "api:latest-prices"
+    cached = get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     try:
         response = (
             supabase.table("stock_latest")
@@ -110,7 +115,9 @@ def latest_prices():
             .order("symbol")
             .execute()
         )
-        return jsonify({"data": response.data or []})
+        payload = {"data": response.data or []}
+        set_json(cache_key, payload, int(os.getenv("REDIS_LATEST_TTL", "30")))
+        return jsonify(payload)
     except Exception:
         app.logger.exception("Unable to retrieve latest prices from Supabase")
         return jsonify({"error": "Unable to retrieve latest prices"}), 500
@@ -187,6 +194,9 @@ def stock_history():
     if not TWELVE_DATA_API_KEY:
         app.logger.warning("Twelve Data API key is not configured; using Yahoo Finance for %s", symbol)
     cache_key = f"{symbol}:{period}"
+    redis_cached = None if request.args.get("refresh") == "1" else get_json("api:stock-history:" + cache_key)
+    if redis_cached is not None:
+        return jsonify(redis_cached)
     cached = CHART_CACHE.get(cache_key)
     if cached and (request.args.get("refresh") != "1"):
         age = __import__("time").time() - cached["created"]
@@ -248,6 +258,11 @@ def stock_history():
         return jsonify({"error": "Unable to retrieve chart data from market data providers"}), 502
 
     CHART_CACHE[cache_key] = {"created": __import__("time").time(), "payload": payload}
+    set_json(
+        "api:stock-history:" + cache_key,
+        payload,
+        int(os.getenv("REDIS_HISTORY_TTL", "60")),
+    )
     return jsonify(payload)
 
 
@@ -258,6 +273,11 @@ def news():
         limit = min(max(int(request.args.get("limit", 100)), 1), 100)
     except ValueError:
         return jsonify({"error": "page and limit must be integers"}), 400
+
+    cache_key = f"api:news:{page}:{limit}"
+    cached = get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
 
     start = (page - 1) * limit
     end = start + limit - 1
@@ -276,13 +296,15 @@ def news():
         row["image_url"] = image_url
         row["fallback_image_url"] = fallback_image_url
         row["image_proxy_url"] = url_for("news_image", url=image_url, symbol=symbol, _external=True)
-    return jsonify({
+    payload = {
         "data": rows,
         "page": page,
         "limit": limit,
         "count": len(rows),
         "has_next": len(rows) == limit,
-    })
+    }
+    set_json(cache_key, payload, int(os.getenv("REDIS_NEWS_TTL", "120")))
+    return jsonify(payload)
 
 
 @app.get("/api/news-image")
