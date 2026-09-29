@@ -360,14 +360,18 @@ def predict_latest_tft(model, training, frame, horizon_sessions):
         symbol_frame = frame[frame["symbol"] == symbol].sort_values("date").tail(ENCODER_LENGTH + 1).copy()
         if len(symbol_frame) < ENCODER_LENGTH + 1:
             continue
-        # Keep encoder target values intact; only the final decoder row
-        # has an unknown future target at inference time.
+
+        # The decoder target is unknown at inference time. Keep the target
+        # column structurally present for TimeSeriesDataSet, but use a
+        # temporary neutral placeholder only in the prediction copy.
         symbol_frame["target_return"] = symbol_frame.groupby("symbol")["close"].transform(
             lambda series: np.log(series.shift(-horizon_sessions) / series)
         )
         symbol_frame["target_close"] = symbol_frame.groupby("symbol")["close"].shift(
             -horizon_sessions
         )
+        symbol_frame["target_return"] = symbol_frame["target_return"].fillna(0.0)
+
         try:
             prediction_dataset = TimeSeriesDataSet.from_dataset(
                 training, symbol_frame, predict=True, stop_randomization=True
