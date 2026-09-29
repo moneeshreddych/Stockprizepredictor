@@ -14,7 +14,7 @@ import yfinance as yf
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from news.stock_config import NASDAQ_STOCKS
-from src.cache.redis_cache import get_json, set_json, delete as cache_delete
+from src.cache.redis_cache import get_json, set_json
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
