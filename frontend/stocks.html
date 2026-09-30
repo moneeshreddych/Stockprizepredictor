@@ -24,14 +24,13 @@
     <nav class="side-nav" aria-label="Primary navigation">
       <a href="dashboard.html"><span class="material-symbols-outlined">dashboard</span><span>Dashboard</span></a>
       <a class="active" href="stocks.html"><span class="material-symbols-outlined">monitoring</span><span>Stocks</span></a>
-      <a href="predictions.html"><span class="material-symbols-outlined">psychology</span><span>Predictions</span></a>
       <a href="news.html"><span class="material-symbols-outlined">newspaper</span><span>News</span></a>
     </nav>
     <div class="sidebar-promo">
       <div class="promo-icon"><span class="material-symbols-outlined">show_chart</span></div>
       <strong>Track the market<br>in one place.</strong>
       <small>Completed closing prices, historical charts and market movers.</small>
-      <a class="promo-link" href="predictions.html">Open predictions <span class="material-symbols-outlined">arrow_forward</span></a>
+      <div class="promo-link promo-static"><span class="material-symbols-outlined">psychology</span><span>ML forecasts are shown with each stock.</span></div>
     </div>
   </aside>
 
@@ -57,6 +56,23 @@
             <div class="selected-price"><strong id="selected-price">—</strong><span id="selected-change">—</span></div>
           </section>
 
+          <section class="card forecast-card" id="forecast-card">
+            <div class="forecast-head">
+              <div><span class="eyebrow">ML FORECAST</span><h2>Price prediction</h2><small id="prediction-status">Loading model forecasts...</small></div>
+              <div class="forecast-horizons" id="forecast-horizons">
+                <button class="selected" data-horizon="1d" type="button">1D</button><button data-horizon="7d" type="button">7D</button><button data-horizon="1m" type="button">1M</button><button data-horizon="6m" type="button">6M</button><button data-horizon="1y" type="button">1Y</button><button data-horizon="5y" type="button">5Y</button><button data-horizon="10y" type="button">10Y</button><button data-horizon="20y" type="button">20Y</button>
+              </div>
+            </div>
+            <div class="forecast-grid">
+              <div class="forecast-primary"><span>Predicted price</span><strong id="forecast-price">—</strong><em id="forecast-change">—</em></div>
+              <div class="forecast-metric"><span>Target date</span><b id="forecast-target">—</b></div>
+              <div class="forecast-metric"><span>Prediction range</span><b id="forecast-range">—</b></div>
+              <div class="forecast-metric"><span>FinBERT sentiment</span><b id="forecast-sentiment">—</b></div>
+              <div class="forecast-metric"><span>Forecast type</span><b id="forecast-type">—</b></div>
+              <div class="forecast-metric"><span>Model</span><b id="forecast-model">—</b></div>
+            </div>
+          </section>
+
           <section class="card chart-card" id="chart-card">
             <div class="chart-card-top"><div class="chart-tabs" id="periods"><button class="selected" data-period="1D" type="button">1D</button><button data-period="1W" type="button">1W</button><button data-period="1M" type="button">1M</button><button data-period="1Y" type="button">1Y</button></div><div class="chart-tools"><span id="chart-status">Loading chart history...</span><button id="chart-refresh" type="button" title="Refresh chart"><span class="material-symbols-outlined">refresh</span></button></div></div>
             <div class="chart-meta"><span><i class="chart-green"></i> Candlestick</span><span><i class="chart-volume"></i> Volume</span><span class="chart-source">Historical market data</span></div>
@@ -68,7 +84,7 @@
         </div>
       </section>
 
-      <footer class="footer dash-footer"><div><strong><b>BULL</b><em>INSIGHTS</em></strong><small>Market intelligence for smarter decisions.</small></div><div class="footer-links"><a href="dashboard.html">Dashboard</a><a href="predictions.html">Predictions</a><a href="news.html">News</a></div></footer>
+      <footer class="footer dash-footer"><div><strong><b>BULL</b><em>INSIGHTS</em></strong><small>Market intelligence for smarter decisions.</small></div><div class="footer-links"><a href="dashboard.html">Dashboard</a><a href="news.html">News</a></div></footer>
     </main>
   </div>
   <script src="js/config.js"></script><script src="js/news-renderer.js"></script><script src="js/app.js"></script>
