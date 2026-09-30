@@ -10,3 +10,5 @@ Flask>=3.0.0
 fastapi
 uvicorn
 httpx
+
+redis>=5.0,<7
