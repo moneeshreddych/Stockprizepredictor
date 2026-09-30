@@ -1,15 +1,11 @@
--- Run this once in Supabase SQL Editor for an existing project.
-CREATE TABLE IF NOT EXISTS public.stock_latest (
-    symbol TEXT PRIMARY KEY,
-    price DOUBLE PRECISION NOT NULL,
-    change DOUBLE PRECISION,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
--- If stock_latest was created earlier without the change column,
--- add it without affecting existing rows.
+-- Normalize the market quote table used by the website.
 ALTER TABLE public.stock_latest
-ADD COLUMN IF NOT EXISTS change DOUBLE PRECISION;
+    ADD COLUMN IF NOT EXISTS previous_close DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS price_type TEXT DEFAULT 'previous_close';
 
-CREATE INDEX IF NOT EXISTS idx_stock_latest_timestamp
-ON public.stock_latest(timestamp DESC);
+UPDATE public.stock_latest
+SET price_type = COALESCE(price_type, 'previous_close');
+
+-- The collector writes UTC timestamps for every successful quote.
+CREATE INDEX IF NOT EXISTS stock_latest_timestamp_idx
+    ON public.stock_latest (timestamp DESC);
