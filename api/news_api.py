@@ -11,6 +11,7 @@ from flask import Flask, jsonify, request, Response, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from supabase import create_client
 import yfinance as yf
+from api.cache import get_json, set_json, backend as cache_backend
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from news.stock_config import NASDAQ_STOCKS
@@ -62,7 +63,7 @@ def home():
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok", "service": "BullInsights API"})
+    return jsonify({"status": "ok", "service": "BullInsights API", "cache": cache_backend()})
 
 
 STOCK_FALLBACK_IMAGES = {
@@ -103,6 +104,10 @@ def make_svg_thumbnail(symbol):
 
 @app.get("/api/latest-prices")
 def latest_prices():
+    cache_key = "api:latest-prices:v1"
+    cached = get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
     try:
         response = (
             supabase.table("stock_latest")
@@ -110,7 +115,9 @@ def latest_prices():
             .order("symbol")
             .execute()
         )
-        return jsonify({"data": response.data or []})
+        payload = {"data": response.data or []}
+        set_json(cache_key, payload, 60)
+        return jsonify(payload)
     except Exception:
         app.logger.exception("Unable to retrieve latest prices from Supabase")
         return jsonify({"error": "Unable to retrieve latest prices"}), 500
@@ -256,6 +263,10 @@ def news():
     try:
         page = max(int(request.args.get("page", 1)), 1)
         limit = min(max(int(request.args.get("limit", 100)), 1), 100)
+        cache_key = f"api:news:v1:{page}:{limit}"
+        cached = get_json(cache_key)
+        if cached is not None:
+            return jsonify(cached)
     except ValueError:
         return jsonify({"error": "page and limit must be integers"}), 400
 
@@ -276,13 +287,15 @@ def news():
         row["image_url"] = image_url
         row["fallback_image_url"] = fallback_image_url
         row["image_proxy_url"] = url_for("news_image", url=image_url, symbol=symbol, _external=True)
-    return jsonify({
+    payload = {
         "data": rows,
         "page": page,
         "limit": limit,
         "count": len(rows),
         "has_next": len(rows) == limit,
-    })
+    }
+    set_json(cache_key, payload, 120)
+    return jsonify(payload)
 
 
 @app.get("/api/news-image")
