@@ -10,7 +10,7 @@ on:
       max_epochs:
         description: "Maximum TFT epochs per horizon"
         required: true
-        default: "40"
+        default: "15"
 
 jobs:
   train-ml:
@@ -36,7 +36,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           TFT_MAX_EPOCHS: ${{ inputs.max_epochs }}
-          TFT_EARLY_STOPPING_PATIENCE: "6"
+          TFT_EARLY_STOPPING_PATIENCE: "4"
           PUBLISH_LONG_TERM_SCENARIOS: "1"
         run: |
           python -m ml.pipeline finbert
