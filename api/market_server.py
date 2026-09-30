@@ -6,6 +6,7 @@ import requests
 from flask import jsonify, request
 import yfinance as yf
 from api.news_api import app, supabase
+from api.cache import get_json, set_json
 from news.stock_config import get_nasdaq_stocks
 FINNHUB_API_KEY=os.getenv("FINNHUB_API_KEY"); FINNHUB_BASE_URL="https://finnhub.io/api/v1"; MARKET_TZ=ZoneInfo("America/New_York"); SYMBOLS=list(get_nasdaq_stocks().keys()); BATCH_SIZE=5
 
@@ -77,6 +78,11 @@ def predictions():
     symbol = request.args.get("symbol", "").strip().upper()
     horizon = request.args.get("horizon", "").strip().lower()
 
+    cache_key = f"api:predictions:v2:{symbol or '*'}:{horizon or '*'}"
+    cached = get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
     try:
         query = (
             supabase.table("predictions")
@@ -139,10 +145,9 @@ def predictions():
             ),
         )
 
-        if symbol:
-            return jsonify({"data": ordered})
-
-        return jsonify({"data": ordered})
+        payload = {"data": ordered}
+        set_json(cache_key, payload, 300)
+        return jsonify(payload)
     except Exception:
         app.logger.exception("Unable to retrieve ML predictions")
         return jsonify({"error": "Unable to retrieve ML predictions"}), 500
