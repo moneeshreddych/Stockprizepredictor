@@ -103,8 +103,60 @@ def make_svg_thumbnail(symbol):
 
 
 @app.get("/api/latest-prices")
+LATEST_PRICE_SYMBOLS = list(NASDAQ_STOCKS.keys())
+
+
+def _fallback_completed_closes(symbols):
+    """Return completed daily closes when Supabase has stale or missing quote rows."""
+    results = {}
+    for start in range(0, len(symbols), 5):
+        batch = symbols[start:start + 5]
+        try:
+            history = yf.download(
+                tickers=batch, period="10d", interval="1d",
+                auto_adjust=False, prepost=False, group_by="ticker",
+                threads=False, progress=False,
+            )
+            if history is None or history.empty:
+                continue
+            for symbol in batch:
+                try:
+                    if getattr(history.columns, "nlevels", 1) == 1:
+                        frame = history
+                    else:
+                        try:
+                            frame = history[symbol]
+                        except (KeyError, TypeError):
+                            frame = history.xs(symbol, level=1, axis=1)
+                    if frame is None or "Close" not in frame.columns:
+                        continue
+                    rows = frame.dropna(subset=["Close"])
+                    if len(rows) < 2:
+                        continue
+                    close = float(rows.iloc[-1]["Close"])
+                    previous_close = float(rows.iloc[-2]["Close"])
+                    if previous_close == 0:
+                        continue
+                    results[symbol] = {
+                        "symbol": symbol,
+                        "price": close,
+                        "previous_close": previous_close,
+                        "change": ((close / previous_close) - 1) * 100,
+                        "timestamp": rows.index[-1].isoformat(),
+                        "price_type": "previous_close",
+                        "source": "Yahoo Finance fallback",
+                    }
+                except Exception:
+                    app.logger.exception("Unable to parse fallback close for %s", symbol)
+        except Exception:
+            app.logger.exception("Yahoo Finance fallback failed for %s", ",".join(batch))
+    return results
+
+
+@app.get("/api/latest-prices")
 def latest_prices():
-    cache_key = "api:latest-prices:v1"
+    # v2 invalidates the old cache, which contained incomplete quote rows.
+    cache_key = "api:latest-prices:v2"
     cached = get_json(cache_key)
     if cached is not None:
         return jsonify(cached)
@@ -115,7 +167,32 @@ def latest_prices():
             .order("symbol")
             .execute()
         )
-        payload = {"data": response.data or []}
+        rows = response.data or []
+        by_symbol = {str(row.get("symbol", "")).upper(): row for row in rows}
+        needs_fallback = [
+            symbol for symbol in LATEST_PRICE_SYMBOLS
+            if symbol not in by_symbol
+            or by_symbol[symbol].get("price") is None
+            or by_symbol[symbol].get("previous_close") is None
+            or by_symbol[symbol].get("change") is None
+            or by_symbol[symbol].get("timestamp") is None
+        ]
+        fallback = _fallback_completed_closes(needs_fallback) if needs_fallback else {}
+        merged = []
+        for symbol in LATEST_PRICE_SYMBOLS:
+            row = by_symbol.get(symbol)
+            if row and row.get("price") is not None and symbol not in fallback:
+                row = {**row, "price_type": row.get("price_type") or "previous_close"}
+            elif symbol in fallback:
+                row = fallback[symbol]
+            else:
+                row = {
+                    "symbol": symbol, "price": None, "previous_close": None,
+                    "change": None, "timestamp": None, "price_type": "unavailable",
+                    "source": "market data unavailable",
+                }
+            merged.append(row)
+        payload = {"data": merged}
         set_json(cache_key, payload, 60)
         return jsonify(payload)
     except Exception:
