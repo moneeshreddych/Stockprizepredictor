@@ -57,8 +57,10 @@ def fetch_quote(symbol: str) -> Dict[str, Any]:
     return {
         "symbol": symbol,
         "price": price,
+        "previous_close": previous_close,
         "change": change_percent,
         "timestamp": timestamp,
+        "price_type": "previous_close",
     }
 
 
