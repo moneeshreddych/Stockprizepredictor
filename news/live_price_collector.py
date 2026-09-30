@@ -1,9 +1,10 @@
-"""Fetch live quotes from Twelve Data and store them in Supabase."""
+"""Collect the configured US equity closing quotes into Supabase."""
 
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import requests
 from dotenv import load_dotenv
@@ -23,7 +24,7 @@ TWELVE_DATA_URL = "https://api.twelvedata.com/quote"
 
 def fetch_quote(symbol: str) -> Dict[str, Any]:
     if not TWELVE_DATA_API_KEY:
-        raise RuntimeError("TWELVE_DATA_API_KEY is missing from .env")
+        raise RuntimeError("TWELVE_DATA_API_KEY is missing")
 
     response = requests.get(
         TWELVE_DATA_URL,
@@ -32,38 +33,48 @@ def fetch_quote(symbol: str) -> Dict[str, Any]:
     )
     response.raise_for_status()
     payload = response.json()
-
     if payload.get("status") == "error" or payload.get("code"):
         raise RuntimeError(payload.get("message", "Twelve Data returned an error"))
 
     price = payload.get("close")
-    if price is None:
-        raise RuntimeError(f"No price returned for {symbol}")
-
     previous_close = payload.get("previous_close")
-    if previous_close is not None:
-        change = float(payload.get("percent_change") or 0)
-    else:
-        change = None
+    if price is None or previous_close is None:
+        raise RuntimeError(f"Incomplete quote returned for {symbol}")
+
+    price = float(price)
+    previous_close = float(previous_close)
+    change_percent = ((price - previous_close) / previous_close * 100) if previous_close else 0.0
+
+    raw_timestamp = payload.get("datetime") or payload.get("timestamp")
+    try:
+        if raw_timestamp and isinstance(raw_timestamp, str):
+            timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+        else:
+            timestamp = datetime.now(timezone.utc).isoformat()
+    except ValueError:
+        timestamp = datetime.now(timezone.utc).isoformat()
 
     return {
         "symbol": symbol,
-        "price": float(price),
-        "change": change,
+        "price": price,
+        "change": change_percent,
+        "timestamp": timestamp,
     }
 
 
 def collect_live_prices() -> int:
     stored = 0
-    for symbol in get_nasdaq_stocks():
+    symbols = list(get_nasdaq_stocks().keys())
+    print(f"Collecting {len(symbols)} configured stocks...")
+    for symbol in symbols:
         try:
             quote = fetch_quote(symbol)
             supabase.table("stock_latest").upsert(quote, on_conflict="symbol").execute()
             stored += 1
-            print(f"{symbol}: {quote['price']:.2f} ({quote['change']:+.2f}%)")
+            print(f"{symbol}: {quote['price']:.2f} ({quote['change']:+.2f}%) @ {quote['timestamp']}")
         except Exception as exc:
             print(f"{symbol}: failed - {exc}")
-    print(f"Stored {stored} live quotes in stock_latest")
+    print(f"Stored {stored}/{len(symbols)} quotes in stock_latest")
     return stored
 
 
