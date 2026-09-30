@@ -29,7 +29,7 @@ jobs:
           cache-dependency-path: requirements-ml.txt
 
       - name: Install ML dependencies
-        run: python -m pip install --upgrade pip && pip install -r requirements-ml.txt
+        run: python -m pip install --upgrade pip && pip install -r requirements-ml.txt && pip install "Flask>=3.0.0" "requests>=2.31.0"
 
       - name: Train FinBERT + TFT and publish predictions
         env:
