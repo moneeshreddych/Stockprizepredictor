@@ -102,7 +102,6 @@ def make_svg_thumbnail(symbol):
     return Response(svg, status=200, content_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/api/latest-prices")
 LATEST_PRICE_SYMBOLS = list(NASDAQ_STOCKS.keys())
 
 
@@ -153,6 +152,7 @@ def _fallback_completed_closes(symbols):
     return results
 
 
+@app.get("/api/latest-prices")
 @app.get("/api/latest-prices")
 def latest_prices():
     # v2 invalidates the old cache, which contained incomplete quote rows.
