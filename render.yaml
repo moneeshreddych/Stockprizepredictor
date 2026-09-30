@@ -1,4 +1,9 @@
 services:
+  - type: keyvalue
+    name: bullinsights-cache
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+
   - type: web
     name: bullinsights-api
     runtime: python
@@ -15,3 +20,8 @@ services:
         sync: false
       - key: ALPACA_SECRET_KEY
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: bullinsights-cache
+          property: connectionString
