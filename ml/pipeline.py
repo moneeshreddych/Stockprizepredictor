@@ -13,12 +13,18 @@ import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-from api.news_api import supabase
+from dotenv import load_dotenv
+from supabase import create_client
 from news.stock_config import get_nasdaq_stocks
 
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
+if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_SECRET_KEY are required")
+supabase = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 ARTIFACTS = ROOT / "artifacts" / "ml"
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
