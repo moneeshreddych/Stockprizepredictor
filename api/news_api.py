@@ -111,7 +111,7 @@ def latest_prices():
     try:
         response = (
             supabase.table("stock_latest")
-            .select("symbol,price,change,timestamp")
+            .select("symbol,price,previous_close,change,timestamp,price_type")
             .order("symbol")
             .execute()
         )
