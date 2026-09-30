@@ -2,15 +2,34 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile  # Flask API Dockerfile
+      dockerfile: Dockerfile
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "5000:5000"
 
   collector:
     build:
       context: .
-      dockerfile: src/collector/Dockerfile  # FastAPI collector Dockerfile
+      dockerfile: src/collector/Dockerfile
     env_file: .env
     ports:
       - "8001:8001"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
