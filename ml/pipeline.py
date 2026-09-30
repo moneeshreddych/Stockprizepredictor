@@ -52,12 +52,51 @@ def seed_everything():
 
 
 def fetch_all(table, columns, page_size=1000):
+    """Read Supabase rows with a small HTTP retry layer.
+
+    The GitHub Actions runner can occasionally lose an HTTP/2 connection to
+    Supabase while using the PostgREST SDK. Direct REST reads with requests
+    avoid reusing that broken HTTP/2 connection and are retried on transient
+    transport failures.
+    """
+    if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SECRET_KEY are required")
+
+    import time
+
     rows, offset = [], 0
+    endpoint = SUPABASE_URL.rstrip("/") + "/rest/v1/" + table
+    headers = {
+        "apikey": SUPABASE_SECRET_KEY,
+        "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
+        "Accept": "application/json",
+    }
+
     while True:
-        batch = (
-            supabase.table(table).select(columns)
-            .range(offset, offset + page_size - 1).execute().data or []
-        )
+        params = {
+            "select": columns,
+            "offset": offset,
+            "limit": page_size,
+        }
+        last_error = None
+        for attempt in range(5):
+            try:
+                response = requests.get(
+                    endpoint,
+                    headers=headers,
+                    params=params,
+                    timeout=60,
+                )
+                response.raise_for_status()
+                batch = response.json() or []
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt == 4:
+                    raise RuntimeError(
+                        f"Supabase REST request failed for {table} after 5 attempts: {exc}"
+                    ) from exc
+                time.sleep(2 ** attempt)
         rows.extend(batch)
         if len(batch) < page_size:
             return rows
