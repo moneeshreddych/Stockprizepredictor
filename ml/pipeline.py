@@ -368,6 +368,10 @@ def predict_latest_tft(model, training, frame, horizon_sessions):
         symbol_frame["target_close"] = symbol_frame.groupby("symbol")["close"].shift(
             -horizon_sessions
         )
+        # The final decoder target is unknown at inference time. PyTorch
+        # Forecasting still requires the target column in the prediction frame,
+        # so use a neutral placeholder only for this temporary decoder row.
+        symbol_frame["target_return"] = symbol_frame["target_return"].fillna(0.0)
         try:
             prediction_dataset = TimeSeriesDataSet.from_dataset(
                 training, symbol_frame, predict=True, stop_randomization=True
