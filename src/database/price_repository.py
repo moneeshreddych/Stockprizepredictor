@@ -17,15 +17,15 @@ class PriceRepository:
         try:
             response = (
                 supabase.table("stock_prices")
-                .select("symbol,date,open,high,low,close,volume")
+                .select("symbol,price_date,open,high,low,close,volume")
                 .eq("symbol", symbol)
-                .order("date", desc=True)
+                .order("price_date", desc=True)
                 .limit(limit)
                 .execute()
             )
             data = response.data or []
             if data:
-                return sorted(data, key=lambda x: x["date"])
+                return sorted(data, key=lambda x: x["price_date"])
         except Exception as exc:
             logger.debug("Supabase price fetch fallback to CSV for %s: %s", symbol, exc)
 
@@ -33,8 +33,8 @@ class PriceRepository:
         if PRICE_CSV_FILE.exists():
             try:
                 df = pd.read_csv(PRICE_CSV_FILE)
-                df_symbol = df[df["symbol"] == symbol].sort_values("date", ascending=False).head(limit)
-                df_sorted = df_symbol.sort_values("date", ascending=True)
+                df_symbol = df[df["symbol"] == symbol].sort_values("price_date", ascending=False).head(limit)
+                df_sorted = df_symbol.sort_values("price_date", ascending=True)
                 return df_sorted.to_dict(orient="records")
             except Exception as exc:
                 logger.error("CSV price read error for %s: %s", symbol, exc)
@@ -48,7 +48,7 @@ class PriceRepository:
         try:
             response = (
                 supabase.table("stock_prices")
-                .upsert(records, on_conflict="stock_id,date", ignore_duplicates=False)
+                .upsert(records, on_conflict="stock_id,price_date", ignore_duplicates=False)
                 .execute()
             )
             return len(response.data or [])
